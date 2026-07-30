@@ -917,6 +917,9 @@ function openMemberModal(login){
       <div><div class="k">Toplam yatırım adedi</div><div class="v">${fmtInt(latest.yatirim_adedi)}</div></div>
       <div><div class="k">Toplam çekim</div><div class="v">${fmtMoney(latest.toplam_cekim)}</div></div>
       <div><div class="k">İlk yatırım</div><div class="v">${fmtMoney(first.ilk_yatirim)}</div></div>
+      <div><div class="k">İlk çekim</div><div class="v">${fmtMoney(first.ilk_cekim)}</div></div>
+      <div><div class="k">Son yatırım tarihi</div><div class="v">${lastIncreaseDate(login, latest.tarih) || '–'}</div></div>
+      <div><div class="k">Son çekim tarihi</div><div class="v">${lastWithdrawalDate(login, latest.tarih) || '–'}</div></div>
       <div><div class="k">Kayıtlı gün sayısı</div><div class="v">${history.length}</div></div>
     </div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Toplam yatırım seyri</div>
