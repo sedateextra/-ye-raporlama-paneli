@@ -659,6 +659,7 @@ function renderSegmentPage(containerId, title, sub, rows, opts){
   const filtered = applyCommonFilters(rows, containerId);
   const withD = withDeltas(filtered, compareDate);
 
+  const viewDate = document.getElementById('viewDate').value;
   const extraCols = opts.extraCols || [];
   let html = `<h1 class="page-title">${title}</h1><div class="page-sub">${sub} · ${withD.length} üye</div>`;
   html += filterBoxes;
@@ -666,7 +667,7 @@ function renderSegmentPage(containerId, title, sub, rows, opts){
     html += '<div class="empty">Bu kritere uyan üye yok.</div>';
   } else {
     html += '<div class="table-wrap"><table><thead><tr>';
-    html += '<th>Temsilci</th><th>Login</th><th>Telefon</th><th>Kayıt</th><th>Yat. adedi</th><th>Toplam yatırım</th><th>Çekim adedi</th><th>Toplam çekim</th>';
+    html += '<th>Temsilci</th><th>Login</th><th>Telefon</th><th>Kayıt</th><th>Yat. adedi</th><th>Toplam yatırım</th><th>Çekim adedi</th><th>Toplam çekim</th><th>İlk çekim</th><th>Son çekim tarihi</th>';
     extraCols.forEach(c => html += `<th>${c.label}</th>`);
     if(compareDate) html += '<th>Yat. değişim</th>';
     html += '</tr></thead><tbody>';
@@ -679,7 +680,9 @@ function renderSegmentPage(containerId, title, sub, rows, opts){
         <td>${fmtInt(r.yatirim_adedi)}</td>
         <td>${fmtMoney(r.toplam_yatirim)}</td>
         <td>${fmtInt(r.cekim_adedi)}</td>
-        <td>${fmtMoney(r.toplam_cekim)}</td>`;
+        <td>${fmtMoney(r.toplam_cekim)}</td>
+        <td>${fmtMoney(r.ilk_cekim)}</td>
+        <td>${lastWithdrawalDate(r.login, viewDate) || '–'}</td>`;
       extraCols.forEach(c => html += `<td>${c.render(r)}</td>`);
       if(compareDate) html += `<td>${deltaSpan(r.delta_toplam_yatirim, true)}</td>`;
       html += '</tr>';
@@ -691,7 +694,8 @@ function renderSegmentPage(containerId, title, sub, rows, opts){
     const row = {
       Temsilci:r.temsilci, Login:r.login, Telefon:r.telefon, 'Kayıt Tarihi':r.kayit_tarihi,
       'Yatırım Adedi':r.yatirim_adedi, 'Toplam Yatırım':r.toplam_yatirim,
-      'Çekim Adedi':r.cekim_adedi, 'Toplam Çekim':r.toplam_cekim
+      'Çekim Adedi':r.cekim_adedi, 'Toplam Çekim':r.toplam_cekim,
+      'İlk Çekim':r.ilk_cekim, 'Son Çekim Tarihi': lastWithdrawalDate(r.login, viewDate) || ''
     };
     extraCols.forEach(c => row[c.label] = c.exportVal ? c.exportVal(r) : c.render(r).replace(/<[^>]+>/g,''));
     if(compareDate) row['Yatırım Değişimi'] = r.delta_toplam_yatirim ?? '';
