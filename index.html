@@ -25,7 +25,8 @@
   .app{display:flex;min-height:100vh;}
   .sidebar{width:256px;flex-shrink:0;background:var(--sidebar);border-right:1px solid var(--border);padding:22px 0;position:sticky;top:0;height:100vh;overflow-y:auto;}
   .sidebar .brand{padding:0 20px 18px;border-bottom:1px solid var(--border);margin-bottom:14px;display:flex;align-items:center;gap:10px;}
-  .sidebar .brand .mark{width:30px;height:30px;border-radius:7px;background:linear-gradient(155deg,var(--accent),#8a6a2f);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:14px;color:#14150c;}
+  .mark{border-radius:7px;background:linear-gradient(155deg,var(--accent),#8a6a2f);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;color:#14150c;}
+  .sidebar .brand .mark{width:30px;height:30px;font-size:14px;flex-shrink:0;}
   .sidebar .brand .t{font-family:var(--font-display);font-size:14px;font-weight:600;letter-spacing:.01em;}
   .sidebar .brand .s{font-size:11px;color:var(--muted);margin-top:1px;}
   .navgroup{margin-bottom:16px;}
@@ -102,10 +103,43 @@
   .kv .k{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
   .kv .v{font-family:var(--font-mono);font-size:14px;font-weight:600;margin-top:3px;font-variant-numeric:tabular-nums;}
   .placeholder-page{padding:60px 20px;text-align:center;color:var(--muted);border:1px dashed var(--border);border-radius:10px;}
+  .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);}
+  .login-box{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:32px 30px;width:100%;max-width:340px;}
+  .login-box input{font-family:var(--font-body);}
+  .user-pill{font-family:var(--font-mono);font-size:11px;color:var(--muted);display:flex;align-items:center;gap:8px;}
 </style>
 </head>
 <body>
-<div class="app">
+<div class="login-screen" id="loginScreen">
+  <div class="login-box">
+    <div class="mark" style="width:38px;height:38px;font-size:16px;margin-bottom:14px;">GB</div>
+    <div style="font-family:var(--font-display);font-size:17px;font-weight:600;margin-bottom:4px;">Üye Raporlama Paneli</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:22px;">Devam etmek için giriş yapın</div>
+
+    <div id="loginConnectForm">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:14px;">İlk kurulum: önce Supabase bağlantısını girin.</div>
+      <label style="font-family:var(--font-mono);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:6px;">Supabase Project URL</label>
+      <input type="text" id="loginSbUrl" style="width:100%;margin-bottom:14px;" placeholder="https://xxxx.supabase.co">
+      <label style="font-family:var(--font-mono);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:6px;">Supabase Anon Key</label>
+      <input type="text" id="loginSbKey" style="width:100%;margin-bottom:18px;" placeholder="eyJhbGciOi...">
+      <button class="btn" style="width:100%;" onclick="connectFromLogin()">Bağlan</button>
+    </div>
+
+    <div id="loginAuthForm" style="display:none;">
+      <label style="font-family:var(--font-mono);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:6px;">E-posta</label>
+      <input type="email" id="loginEmail" style="width:100%;margin-bottom:14px;" placeholder="ad@golbet.com">
+      <label style="font-family:var(--font-mono);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:6px;">Şifre</label>
+      <input type="password" id="loginPassword" style="width:100%;margin-bottom:18px;" placeholder="••••••••">
+      <button class="btn" style="width:100%;" onclick="handleLogin()">Giriş Yap</button>
+      <div style="font-size:11px;color:var(--muted);margin-top:10px;">Hesabınız yoksa yöneticinizden Supabase üzerinden davet almanız gerekir.</div>
+    </div>
+
+    <div id="loginStatus" style="font-size:12px;color:var(--red);margin-top:12px;min-height:16px;"></div>
+  </div>
+</div>
+
+<div class="app" id="appShell" style="display:none;">
+
 
   <div class="sidebar">
     <div class="brand">
@@ -147,6 +181,7 @@
         <div><label style="font-size:11px;color:var(--muted)">Görüntülenen tarih</label><br><select id="viewDate" onchange="onGlobalDateChange()"></select></div>
         <div><label style="font-size:11px;color:var(--muted)">Karşılaştırma</label><br><select id="compareDate" onchange="onGlobalDateChange()"></select></div>
         <button class="btn secondary" onclick="refreshData()">Yenile</button>
+        <div class="user-pill"><span id="userEmail"></span><button class="btn secondary" style="padding:6px 12px;" onclick="handleLogout()">Çıkış</button></div>
       </div>
     </div>
 
@@ -237,16 +272,63 @@ function initConnection(){
   const conn = loadConn();
   if(conn.url) document.getElementById('sbUrl').value = conn.url;
   if(conn.key) document.getElementById('sbKey').value = conn.key;
-  if(conn.url && conn.key) connect(conn.url, conn.key);
+  if(conn.url && conn.key){ connect(conn.url, conn.key); }
+  else { document.getElementById('loginConnectForm').style.display = 'block'; document.getElementById('loginAuthForm').style.display = 'none'; }
+}
+function connectFromLogin(){
+  const url = document.getElementById('loginSbUrl').value.trim();
+  const key = document.getElementById('loginSbKey').value.trim();
+  const status = document.getElementById('loginStatus');
+  if(!url || !key){ status.style.color='var(--red)'; status.textContent = 'URL ve anon key gerekli.'; return; }
+  localStorage.setItem(CONN_KEY, JSON.stringify({url, key}));
+  document.getElementById('sbUrl').value = url;
+  document.getElementById('sbKey').value = key;
+  status.textContent = '';
+  connect(url, key);
 }
 function connect(url, key){
   try{
     sb = window.supabase.createClient(url, key);
     setConnStatus(true, 'Bağlı: ' + url.replace('https://','').split('.')[0]);
-    refreshData();
+    checkAuthAndProceed();
+    sb.auth.onAuthStateChange((event, session) => {
+      if(event === 'SIGNED_OUT') showLoginScreen();
+    });
   }catch(e){
     setConnStatus(false, 'Bağlantı hatası');
   }
+}
+async function checkAuthAndProceed(){
+  const {data:{session}} = await sb.auth.getSession();
+  if(session){ showApp(session); } else { showLoginScreen(); }
+}
+function showLoginScreen(){
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('appShell').style.display = 'none';
+  document.getElementById('loginConnectForm').style.display = 'none';
+  document.getElementById('loginAuthForm').style.display = 'block';
+  document.getElementById('loginStatus').textContent = '';
+}
+function showApp(session){
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appShell').style.display = 'flex';
+  document.getElementById('userEmail').textContent = session.user.email;
+  refreshData();
+}
+async function handleLogin(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const status = document.getElementById('loginStatus');
+  if(!sb){ status.textContent = 'Önce Supabase bağlantısı kurulmalı (Ayarlar bu tarayıcıda henüz yapılmadı).'; return; }
+  if(!email || !password){ status.textContent = 'E-posta ve şifre girin.'; return; }
+  status.style.color = 'var(--muted)'; status.textContent = 'Giriş yapılıyor...';
+  const {data, error} = await sb.auth.signInWithPassword({email, password});
+  if(error){ status.style.color = 'var(--red)'; status.textContent = 'Hatalı e-posta veya şifre.'; return; }
+  showApp(data.session);
+}
+async function handleLogout(){
+  await sb.auth.signOut();
+  showLoginScreen();
 }
 function saveConnection(){
   const url = document.getElementById('sbUrl').value.trim();
