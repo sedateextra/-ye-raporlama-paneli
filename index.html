@@ -270,6 +270,7 @@ const VIP_TIERS = [
 ];
 const TERFI_RANGE = {min:7000, max:9999.99, hedef:10000};
 const PASIF_GUN_ESIGI = 5;
+const VIP_ESIK = 10000;
 
 /* ================= VERİ DURUMU ================= */
 let historyByLogin = {};   // login -> [{tarih, ...}] asc sorted
@@ -483,8 +484,8 @@ function renderCurrentPage(page){
     renderSegmentPage('yatirimli', 'Yatırımlı Gelen Üyeler', 'Yatırım yapmış üyeler', rows);
   }
   if(page==='vip'){
-    const rows = baseRowsForDate(viewDate, r=>r.segment==='vip');
-    renderSegmentPage('vip', 'VIP Üyeler', 'VIP statüsündeki üyeler', rows, {
+    const rows = baseRowsForDate(viewDate, r=>r.toplam_yatirim >= VIP_ESIK);
+    renderSegmentPage('vip', 'VIP Üyeler', 'Toplam yatırımı 10.000₺ ve üzerinde olan tüm üyeler (hangi sekmeden geldiğinden bağımsız)', rows, {
       extraCols:[
         {label:'VIP Kontrol', render:r=>r.vip_kontrol||''},
         {label:'Hediye Hakkı', render:r=>r.hediye_hakki||''}
@@ -526,10 +527,11 @@ function renderCurrentPage(page){
 
 /* ================= GENEL BAKIŞ ================= */
 function segCounts(dayData){
-  const acc = {yatirimsiz:{c:0,t:0}, yatirimli:{c:0,t:0}, vip:{c:0,t:0}, vipyakin:{c:0,t:0}};
+  const acc = {yatirimsiz:{c:0,t:0}, yatirimli:{c:0,t:0}, vip:{c:0,t:0}};
   Object.values(dayData||{}).forEach(m=>{
-    if(!acc[m.segment]) return;
-    acc[m.segment].c++; acc[m.segment].t += m.toplam_yatirim;
+    if(m.segment==='yatirimsiz'){ acc.yatirimsiz.c++; acc.yatirimsiz.t += m.toplam_yatirim; }
+    if(m.segment==='yatirimli'){ acc.yatirimli.c++; acc.yatirimli.t += m.toplam_yatirim; }
+    if(m.toplam_yatirim >= VIP_ESIK){ acc.vip.c++; acc.vip.t += m.toplam_yatirim; }
   });
   return acc;
 }
