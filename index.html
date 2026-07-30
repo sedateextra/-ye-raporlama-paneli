@@ -540,6 +540,12 @@ function buildIndexes(rows, segmentRows){
 function hasSegment(tarih, login, segment){
   return !!(segmentsByDate[tarih] && segmentsByDate[tarih][login] && segmentsByDate[tarih][login].has(segment));
 }
+const SOURCE_LABEL = {yatirimsiz:'Yatırımsız Gelenler', yatirimli:'Yatırımlı Gelenler', vip:'VIP', vipyakin:"VIP'ye Yakın"};
+function memberSourceLabel(tarih, login){
+  const segs = segmentsByDate[tarih] && segmentsByDate[tarih][login];
+  if(!segs || segs.size===0) return '–';
+  return [...segs].map(s=>SOURCE_LABEL[s]||s).join(', ');
+}
 
 function initDateSelectors(){
   const viewSel = document.getElementById('viewDate');
@@ -724,6 +730,7 @@ function renderCurrentPage(page){
     const rows = baseRowsForDate(viewDate, r=>r.toplam_yatirim >= VIP_ESIK);
     renderSegmentPage('vip', 'VIP Üyeler', 'Toplam yatırımı 10.000₺ ve üzerinde olan tüm üyeler (hangi sekmeden geldiğinden bağımsız)', rows, {
       extraCols:[
+        {label:'Kaynak', render:r=>memberSourceLabel(viewDate, r.login)},
         {label:'VIP Kontrol', render:r=>r.vip_kontrol||''},
         {label:'Hediye Hakkı', render:r=>r.hediye_hakki||''}
       ]
@@ -733,6 +740,7 @@ function renderCurrentPage(page){
     const rows = baseRowsForDate(viewDate, r=>tierFor(r.toplam_yatirim));
     renderSegmentPage('vipyakin-durum', 'VIP Statüsüne Yaklaşan Üyeler', 'Bronz/Gümüş/Altın/Platin/Elmas eşiğine 3.500₺ ve altı kalanlar', rows, {
       extraCols:[
+        {label:'Kaynak', render:r=>memberSourceLabel(viewDate, r.login)},
         {label:'Yaklaşılan statü', render:r=>{const t=tierFor(r.toplam_yatirim); return `<span class="badge ${t.slug}">${t.name}</span>`;}, exportVal:r=>tierFor(r.toplam_yatirim).name},
         {label:'Hedefe ilerleme', render:r=>progressBarHtml(r.toplam_yatirim, tierFor(r.toplam_yatirim)), exportVal:r=>{const t=tierFor(r.toplam_yatirim); return Math.round((r.toplam_yatirim/t.hedef)*100)+'%';}},
         {label:'Hedef tutar', render:r=>fmtMoney(tierFor(r.toplam_yatirim).hedef), exportVal:r=>tierFor(r.toplam_yatirim).hedef},
@@ -744,6 +752,7 @@ function renderCurrentPage(page){
     const rows = baseRowsForDate(viewDate, r=>isTerfiYaklasan(r.toplam_yatirim));
     renderSegmentPage('terfi', 'VIP Terfiye Yaklaşan Üyeler', '7.000₺–9.999₺ arası toplam yatırımı olan üyeler (VIP eşiği 10.000₺)', rows, {
       extraCols:[
+        {label:'Kaynak', render:r=>memberSourceLabel(viewDate, r.login)},
         {label:'Hedefe ilerleme', render:r=>progressBarHtml(r.toplam_yatirim, TERFI_RANGE), exportVal:r=>Math.round((r.toplam_yatirim/TERFI_RANGE.hedef)*100)+'%'},
         {label:'Kalan tutar', render:r=>fmtMoney(TERFI_RANGE.hedef - r.toplam_yatirim), exportVal:r=>TERFI_RANGE.hedef - r.toplam_yatirim}
       ]
@@ -757,6 +766,7 @@ function renderCurrentPage(page){
     }).filter(r => r._gunSayisi !== null && r._gunSayisi >= PASIF_GUN_ESIGI);
     renderSegmentPage('pasif', 'Pasif Yatırımlı Üyeler', `Son ${PASIF_GUN_ESIGI}+ gündür yeni yatırım yapmamış yatırımlı üyeler`, rows, {
       extraCols:[
+        {label:'Kaynak', render:r=>memberSourceLabel(viewDate, r.login)},
         {label:'Son yatırım tarihi', render:r=>r._sonYatirim||'–'},
         {label:'Kaç gündür pasif', render:r=>r._gunSayisi+' gün'}
       ]
