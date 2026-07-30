@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="tr" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -19,6 +19,20 @@
     --bronz:#b87333; --gumus:#b9bec7; --altin:#d4af37; --platin:#8fc4d6; --elmas:#7fd6ee;
     --font-display:'Space Grotesk',sans-serif; --font-body:'Inter',-apple-system,Segoe UI,Arial,sans-serif; --font-mono:'JetBrains Mono',monospace;
   }
+  [data-theme="light"]{
+    --bg:#f6f2e7; --panel:#fffdf8; --panel2:#efe8d6; --sidebar:#efe7d3; --border:#ddd2b4;
+    --text:#26241a; --muted:#83795f; --accent:#a8823f; --accent-dim:rgba(168,130,63,.12);
+    --green:#2f8f63; --red:#b5453b; --amber:#a8823f;
+  }
+  [data-theme="light"] .mark{color:#fffdf8;}
+  [data-theme="light"] .status .led{box-shadow:none;}
+  [data-theme="light"]{
+    --bg:#f6f2e7; --panel:#fffdf8; --panel2:#efe8d6; --sidebar:#efe7d3; --border:#ddd2b4;
+    --text:#26241a; --muted:#83795f; --accent:#a8823f; --accent-dim:rgba(168,130,63,.12);
+    --green:#2f8f63; --red:#b5453b; --amber:#a8823f;
+  }
+  [data-theme="light"] .mark{color:#fffdf8;}
+  [data-theme="light"] .status .led{box-shadow:none;}
   *{box-sizing:border-box;}
   body{margin:0;font-family:var(--font-body);background:var(--bg);color:var(--text);}
   .num, table td.num, .money{font-family:var(--font-mono);font-variant-numeric:tabular-nums;}
@@ -181,6 +195,7 @@
         <div><label style="font-size:11px;color:var(--muted)">Görüntülenen tarih</label><br><select id="viewDate" onchange="onGlobalDateChange()"></select></div>
         <div><label style="font-size:11px;color:var(--muted)">Karşılaştırma</label><br><select id="compareDate" onchange="onGlobalDateChange()"></select></div>
         <button class="btn secondary" onclick="refreshData()">Yenile</button>
+        <button class="btn secondary" id="themeToggle" onclick="toggleTheme()">☀️ Gündüz</button>
         <div class="user-pill"><span id="userEmail"></span><button class="btn secondary" style="padding:6px 12px;" onclick="handleLogout()">Çıkış</button></div>
       </div>
     </div>
@@ -263,7 +278,23 @@
 <script>
 /* ================= AYARLAR / SUPABASE BAĞLANTISI ================= */
 const CONN_KEY = 'golbet_uye_paneli_conn';
+const THEME_KEY = 'golbet_uye_paneli_theme';
 let sb = null;
+
+function initTheme(){
+  const saved = localStorage.getItem(THEME_KEY) || 'dark';
+  applyTheme(saved);
+}
+function applyTheme(mode){
+  document.documentElement.setAttribute('data-theme', mode);
+  const btn = document.getElementById('themeToggle');
+  if(btn) btn.textContent = mode === 'dark' ? '☀️ Gündüz' : '🌙 Gece';
+  localStorage.setItem(THEME_KEY, mode);
+}
+function toggleTheme(){
+  const current = document.documentElement.getAttribute('data-theme');
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+}
 
 function loadConn(){
   try{ return JSON.parse(localStorage.getItem(CONN_KEY)) || {}; }catch(e){ return {}; }
@@ -824,6 +855,7 @@ async function handleUpload(){
 }
 
 /* ================= BAŞLAT ================= */
+initTheme();
 initConnection();
 </script>
 </body>
