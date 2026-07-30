@@ -465,6 +465,7 @@ const VIP_ESIK = 10000;
 
 /* ================= VERİ DURUMU ================= */
 let historyByLogin = {};   // login -> [{tarih, ...}] asc sorted
+let segmentsByDate = {};   // tarih -> { login: Set(segment,...) } — a member can be in more than one sheet the same day
 let dateList = [];         // desc sorted unique dates
 let latestByDate = {};     // tarih -> {login: row}
 
@@ -505,22 +506,39 @@ async function refreshData(){
     if(data.length < pageSize) break;
     from += pageSize;
   }
-  buildIndexes(all);
+  let allSegments = [];
+  from = 0;
+  while(true){
+    const {data, error} = await sb.from('gunluk_segment').select('*').gte('tarih', sinceStr).order('tarih', {ascending:true}).range(from, from+pageSize-1);
+    if(error){ setConnStatus(false, 'Veri hatası: '+error.message); return; }
+    allSegments = allSegments.concat(data);
+    if(data.length < pageSize) break;
+    from += pageSize;
+  }
+  buildIndexes(all, allSegments);
   setConnStatus(true, `Bağlı · ${all.length} kayıt yüklendi`);
   initDateSelectors();
   renderCurrentPage(currentPage());
 }
 
-function buildIndexes(rows){
-  historyByLogin = {}; latestByDate = {};
+function buildIndexes(rows, segmentRows){
+  historyByLogin = {}; latestByDate = {}; segmentsByDate = {};
   rows.forEach(r=>{
     if(!historyByLogin[r.login]) historyByLogin[r.login] = [];
     historyByLogin[r.login].push(r);
     if(!latestByDate[r.tarih]) latestByDate[r.tarih] = {};
     latestByDate[r.tarih][r.login] = r;
   });
+  (segmentRows||[]).forEach(s=>{
+    if(!segmentsByDate[s.tarih]) segmentsByDate[s.tarih] = {};
+    if(!segmentsByDate[s.tarih][s.login]) segmentsByDate[s.tarih][s.login] = new Set();
+    segmentsByDate[s.tarih][s.login].add(s.segment);
+  });
   Object.values(historyByLogin).forEach(arr => arr.sort((a,b)=> a.tarih.localeCompare(b.tarih)));
   dateList = Object.keys(latestByDate).sort().reverse();
+}
+function hasSegment(tarih, login, segment){
+  return !!(segmentsByDate[tarih] && segmentsByDate[tarih][login] && segmentsByDate[tarih][login].has(segment));
 }
 
 function initDateSelectors(){
@@ -695,11 +713,11 @@ function renderCurrentPage(page){
   if(page==='temsilci'){ renderTemsilciPage(viewDate); return; }
 
   if(page==='yatirimsiz'){
-    const rows = baseRowsForDate(viewDate, r=>r.segment==='yatirimsiz');
+    const rows = baseRowsForDate(viewDate, r=>hasSegment(viewDate, r.login, 'yatirimsiz'));
     renderSegmentPage('yatirimsiz', 'Yatırımsız Gelen Üyeler', 'Henüz yatırım yapmamış üyeler', rows);
   }
   if(page==='yatirimli'){
-    const rows = baseRowsForDate(viewDate, r=>r.segment==='yatirimli');
+    const rows = baseRowsForDate(viewDate, r=>hasSegment(viewDate, r.login, 'yatirimli'));
     renderSegmentPage('yatirimli', 'Yatırımlı Gelen Üyeler', 'Yatırım yapmış üyeler', rows);
   }
   if(page==='vip'){
@@ -732,7 +750,7 @@ function renderCurrentPage(page){
     });
   }
   if(page==='pasif'){
-    const rows = baseRowsForDate(viewDate, r=>r.segment==='yatirimli').map(r=>{
+    const rows = baseRowsForDate(viewDate, r=>hasSegment(viewDate, r.login, 'yatirimli')).map(r=>{
       const lastDate = lastIncreaseDate(r.login, viewDate);
       const gun = lastDate ? daysBetween(lastDate, viewDate) : null;
       return {...r, _sonYatirim:lastDate, _gunSayisi:gun};
@@ -747,11 +765,11 @@ function renderCurrentPage(page){
 }
 
 /* ================= GENEL BAKIŞ ================= */
-function segCounts(dayData){
+function segCounts(dayData, tarih){
   const acc = {yatirimsiz:{c:0,t:0}, yatirimli:{c:0,t:0}, vip:{c:0,t:0}};
   Object.values(dayData||{}).forEach(m=>{
-    if(m.segment==='yatirimsiz'){ acc.yatirimsiz.c++; acc.yatirimsiz.t += m.toplam_yatirim; }
-    if(m.segment==='yatirimli'){ acc.yatirimli.c++; acc.yatirimli.t += m.toplam_yatirim; }
+    if(hasSegment(tarih, m.login, 'yatirimsiz')){ acc.yatirimsiz.c++; acc.yatirimsiz.t += m.toplam_yatirim; }
+    if(hasSegment(tarih, m.login, 'yatirimli')){ acc.yatirimli.c++; acc.yatirimli.t += m.toplam_yatirim; }
     if(m.toplam_yatirim >= VIP_ESIK){ acc.vip.c++; acc.vip.t += m.toplam_yatirim; }
   });
   return acc;
@@ -760,12 +778,12 @@ function renderGenel(viewDate){
   const compareDate = document.getElementById('compareDate').value;
   const dayData = latestByDate[viewDate] || {};
   const cmpData = compareDate ? (latestByDate[compareDate]||{}) : null;
-  const cur = segCounts(dayData);
-  const prev = cmpData ? segCounts(cmpData) : null;
+  const cur = segCounts(dayData, viewDate);
+  const prev = cmpData ? segCounts(cmpData, compareDate) : null;
 
   const tierCount = Object.values(dayData).filter(r=>tierFor(r.toplam_yatirim)).length;
   const terfiCount = Object.values(dayData).filter(r=>isTerfiYaklasan(r.toplam_yatirim)).length;
-  const pasifCount = Object.values(dayData).filter(r=>r.segment==='yatirimli').filter(r=>{
+  const pasifCount = Object.values(dayData).filter(r=>hasSegment(viewDate, r.login, 'yatirimli')).filter(r=>{
     const d = lastIncreaseDate(r.login, viewDate);
     return d && daysBetween(d, viewDate) >= PASIF_GUN_ESIGI;
   }).length;
@@ -809,7 +827,7 @@ function renderTrendChart(){
   const yatirimsizData = [], yatirimliData = [], vipData = [];
   last14.forEach(d=>{
     const day = latestByDate[d] || {};
-    const c = segCounts(day);
+    const c = segCounts(day, d);
     yatirimsizData.push(c.yatirimsiz.t);
     yatirimliData.push(c.yatirimli.t);
     vipData.push(c.vip.t);
@@ -1014,13 +1032,27 @@ async function confirmUpload(){
   if(!pendingUpload) return;
   const {records, dateStr, fileName} = pendingUpload;
   const status = document.getElementById('uploadStatus');
-  status.textContent = `Yükleniyor... 0/${records.length}`;
+
+  const veriMap = new Map();
+  records.forEach(r => veriMap.set(r.login, r));
+  const veriRows = [...veriMap.values()];
+
+  const segMap = new Map();
+  records.forEach(r => segMap.set(r.login+'|'+r.segment, {tarih:r.tarih, login:r.login, segment:r.segment}));
+  const segRows = [...segMap.values()];
+
+  status.textContent = `Yükleniyor... 0/${veriRows.length}`;
   const chunkSize = 500;
-  for(let i=0;i<records.length;i+=chunkSize){
-    const chunk = records.slice(i, i+chunkSize);
+  for(let i=0;i<veriRows.length;i+=chunkSize){
+    const chunk = veriRows.slice(i, i+chunkSize);
     const {error} = await sb.from('gunluk_veri').upsert(chunk, {onConflict:'login,tarih'});
     if(error){ status.textContent = 'Hata: ' + error.message; return; }
-    status.textContent = `Yükleniyor... ${Math.min(i+chunkSize,records.length)}/${records.length}`;
+    status.textContent = `Yükleniyor... ${Math.min(i+chunkSize,veriRows.length)}/${veriRows.length}`;
+  }
+  for(let i=0;i<segRows.length;i+=chunkSize){
+    const chunk = segRows.slice(i, i+chunkSize);
+    const {error} = await sb.from('gunluk_segment').upsert(chunk, {onConflict:'tarih,login,segment'});
+    if(error){ status.textContent = 'Hata (segment): ' + error.message; return; }
   }
   await sb.from('yukleme_gecmisi').insert({
     tarih: dateStr, kayit_sayisi: records.length, dosya_adi: fileName,
