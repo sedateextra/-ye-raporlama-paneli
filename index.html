@@ -6,6 +6,7 @@
 <title>Üye Raporlama Paneli</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -121,6 +122,13 @@
   .login-box{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:32px 30px;width:100%;max-width:340px;}
   .login-box input{font-family:var(--font-body);}
   .user-pill{font-family:var(--font-mono);font-size:11px;color:var(--muted);display:flex;align-items:center;gap:8px;}
+  .toast-stack{position:fixed;top:20px;right:20px;z-index:100;display:flex;flex-direction:column;gap:10px;max-width:360px;}
+  .toast{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:10px;padding:14px 16px;box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer;animation:toastIn .2s ease-out;}
+  .toast.vip{border-left-color:var(--vip);} .toast.pasif{border-left-color:var(--pasif);}
+  .toast .toast-title{font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px;}
+  .toast .toast-body{font-size:13px;line-height:1.5;}
+  .toast .toast-close{float:right;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;}
+  @keyframes toastIn{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:translateX(0);}}
 </style>
 </head>
 <body>
@@ -207,6 +215,11 @@
         <h1 class="page-title">Genel Bakış</h1>
         <div class="page-sub">Tüm segmentlerin özet durumu</div>
         <div class="cards" id="genelCards"></div>
+        <h1 class="page-title" style="margin-top:8px">Son 14 gün trend</h1>
+        <div class="page-sub">Segment bazlı toplam yatırım</div>
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:26px;">
+          <canvas id="trendChart" height="90"></canvas>
+        </div>
         <h1 class="page-title" style="margin-top:8px">Temsilci performansı</h1>
         <div class="table-wrap"><table id="genelRepTable"><thead></thead><tbody></tbody></table></div>
       </div>
@@ -245,9 +258,15 @@
             <label style="font-size:11px;color:var(--muted)">Rapor tarihi</label><br>
             <input type="date" id="reportDate">
           </div>
-          <button class="btn" onclick="handleUpload()">Yükle ve Kaydet</button>
+          <button class="btn" onclick="handleUpload()">Excel'i Oku ve Önizle</button>
           <span id="uploadStatus" style="font-size:12px;color:var(--muted)"></span>
         </div>
+        <div id="uploadPreview" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:20px;">
+          <div id="uploadPreviewText" style="font-size:13px;margin-bottom:14px;"></div>
+          <button class="btn" onclick="confirmUpload()">Onayla ve Yükle</button>
+          <button class="btn secondary" onclick="cancelUpload()">Vazgeç</button>
+        </div>
+        <div id="uploadLogWrap"></div>
       </div>
 
       <!-- AYARLAR -->
@@ -271,6 +290,8 @@
   </div>
 </div>
 
+<div class="toast-stack" id="toastStack"></div>
+
 <div class="modal-bg" id="modalBg" onclick="if(event.target===this)closeModal()">
   <div class="modal" id="modalContent"></div>
 </div>
@@ -280,6 +301,40 @@
 const CONN_KEY = 'golbet_uye_paneli_conn';
 const THEME_KEY = 'golbet_uye_paneli_theme';
 let sb = null;
+
+function showToast(title, bodyHtml, kind, linkPage){
+  const stack = document.getElementById('toastStack');
+  const el = document.createElement('div');
+  el.className = 'toast ' + (kind||'');
+  el.innerHTML = `<button class="toast-close" onclick="event.stopPropagation();this.parentElement.remove()">✕</button><div class="toast-title">${title}</div><div class="toast-body">${bodyHtml}</div>`;
+  if(linkPage) el.onclick = () => { goPage(linkPage); el.remove(); };
+  stack.appendChild(el);
+  setTimeout(()=>{ if(el.parentElement) el.remove(); }, 10000);
+}
+async function sendUploadAlerts(dateStr){
+  const dayData = latestByDate[dateStr] || {};
+  const idx = dateList.indexOf(dateStr);
+  const prevDate = dateList[idx+1];
+  const prevData = prevDate ? (latestByDate[prevDate]||{}) : {};
+
+  const yeniVip = Object.values(dayData).filter(r => r.toplam_yatirim >= VIP_ESIK && (!prevData[r.login] || prevData[r.login].toplam_yatirim < VIP_ESIK));
+  const yeniPasif = Object.values(dayData).filter(r=>{
+    if(r.segment !== 'yatirimli') return false;
+    const d = lastIncreaseDate(r.login, dateStr);
+    return d && daysBetween(d, dateStr) === PASIF_GUN_ESIGI;
+  });
+
+  if(yeniVip.length){
+    const list = yeniVip.slice(0,6).map(r=>`${r.login} — ${fmtMoney(r.toplam_yatirim)}`).join('<br>');
+    const more = yeniVip.length>6 ? `<br>...ve ${yeniVip.length-6} kişi daha` : '';
+    showToast(`🏆 ${yeniVip.length} yeni VIP üye`, list+more, 'vip', 'vip');
+  }
+  if(yeniPasif.length){
+    const list = yeniPasif.slice(0,6).map(r=>r.login).join('<br>');
+    const more = yeniPasif.length>6 ? `<br>...ve ${yeniPasif.length-6} kişi daha` : '';
+    showToast(`⚠️ ${yeniPasif.length} üye pasifliğe girdi`, list+more, 'pasif', 'pasif');
+  }
+}
 
 function initTheme(){
   const saved = localStorage.getItem(THEME_KEY) || 'dark';
@@ -345,6 +400,7 @@ function showApp(session){
   document.getElementById('appShell').style.display = 'flex';
   document.getElementById('userEmail').textContent = session.user.email;
   refreshData();
+  renderUploadLog();
 }
 async function handleLogin(){
   const email = document.getElementById('loginEmail').value.trim();
@@ -515,12 +571,21 @@ function withDeltas(rows, compareDate){
 function applyCommonFilters(rows, containerId){
   const search = document.getElementById(containerId+'-search');
   const rep = document.getElementById(containerId+'-rep');
+  const kayit = document.getElementById(containerId+'-kayit');
+  const minT = document.getElementById(containerId+'-min');
+  const maxT = document.getElementById(containerId+'-max');
   let out = rows;
   if(search && search.value.trim()){
     const s = search.value.trim().toLowerCase();
     out = out.filter(r => r.login.toLowerCase().includes(s) || (r.telefon||'').includes(s));
   }
   if(rep && rep.value){ out = out.filter(r => r.temsilci === rep.value); }
+  if(kayit && kayit.value){
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - parseInt(kayit.value));
+    out = out.filter(r => r.kayit_tarihi && new Date(r.kayit_tarihi) >= cutoff);
+  }
+  if(minT && minT.value !== ''){ out = out.filter(r => r.toplam_yatirim >= parseFloat(minT.value)); }
+  if(maxT && maxT.value !== ''){ out = out.filter(r => r.toplam_yatirim <= parseFloat(maxT.value)); }
   return out;
 }
 function repOptionsHtml(rows){
@@ -545,11 +610,25 @@ function renderSegmentPage(containerId, title, sub, rows, opts){
   opts = opts || {};
   const compareDate = document.getElementById('compareDate').value;
   const el = document.getElementById('page-'+containerId);
+  const prev = {
+    search: document.getElementById(containerId+'-search')?.value || '',
+    rep: document.getElementById(containerId+'-rep')?.value || '',
+    kayit: document.getElementById(containerId+'-kayit')?.value || '',
+    min: document.getElementById(containerId+'-min')?.value || '',
+    max: document.getElementById(containerId+'-max')?.value || ''
+  };
+  const repOpts = [...new Set(rows.map(r=>r.temsilci).filter(Boolean))].sort()
+    .map(r=>`<option value="${r}" ${r===prev.rep?'selected':''}>${r}</option>`).join('');
+  const kayitOpts = [['','Kayıt: tümü'],['7','Son 7 gün'],['30','Son 30 gün']]
+    .map(([v,l])=>`<option value="${v}" ${v===prev.kayit?'selected':''}>${l}</option>`).join('');
   const filterBoxes = `
     <div class="toolbar">
       <div class="toolbar-left">
-        <input type="text" id="${containerId}-search" placeholder="Login veya telefon ara..." oninput="renderCurrentPage('${containerId}')">
-        <select id="${containerId}-rep" onchange="renderCurrentPage('${containerId}')">${repOptionsHtml(rows)}</select>
+        <input type="text" id="${containerId}-search" placeholder="Login veya telefon ara..." value="${prev.search.replace(/"/g,'&quot;')}" oninput="renderCurrentPage('${containerId}')">
+        <select id="${containerId}-rep" onchange="renderCurrentPage('${containerId}')"><option value="">Tüm temsilciler</option>${repOpts}</select>
+        <select id="${containerId}-kayit" onchange="renderCurrentPage('${containerId}')">${kayitOpts}</select>
+        <input type="number" id="${containerId}-min" placeholder="Min ₺" style="width:90px" value="${prev.min}" oninput="renderCurrentPage('${containerId}')">
+        <input type="number" id="${containerId}-max" placeholder="Max ₺" style="width:90px" value="${prev.max}" oninput="renderCurrentPage('${containerId}')">
       </div>
       <button class="btn secondary" onclick="exportRows('${containerId}')">Excel'e Aktar</button>
     </div>`;
@@ -719,6 +798,45 @@ function renderGenel(viewDate){
     `<div class="card pasif" onclick="goPage('pasif')"><div class="label">Pasif yatırımlı</div><div class="value">${fmtInt(pasifCount)} üye</div><div class="sub">${PASIF_GUN_ESIGI}+ gündür hareketsiz</div></div>`;
 
   renderRepTable('genelRepTable', dayData, cmpData);
+  renderTrendChart();
+}
+
+let trendChartInstance = null;
+function renderTrendChart(){
+  const canvas = document.getElementById('trendChart');
+  if(!canvas || typeof Chart === 'undefined') return;
+  const last14 = dateList.slice(0, 14).slice().reverse();
+  const yatirimsizData = [], yatirimliData = [], vipData = [];
+  last14.forEach(d=>{
+    const day = latestByDate[d] || {};
+    const c = segCounts(day);
+    yatirimsizData.push(c.yatirimsiz.t);
+    yatirimliData.push(c.yatirimli.t);
+    vipData.push(c.vip.t);
+  });
+  if(trendChartInstance) trendChartInstance.destroy();
+  const rootStyle = getComputedStyle(document.documentElement);
+  const gridColor = rootStyle.getPropertyValue('--border').trim();
+  const textColor = rootStyle.getPropertyValue('--muted').trim();
+  trendChartInstance = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: last14,
+      datasets: [
+        {label:'Yatırımsız', data:yatirimsizData, borderColor: rootStyle.getPropertyValue('--yatirimsiz').trim(), tension:.3, pointRadius:2},
+        {label:'Yatırımlı', data:yatirimliData, borderColor: rootStyle.getPropertyValue('--yatirimli').trim(), tension:.3, pointRadius:2},
+        {label:'VIP (10.000₺+)', data:vipData, borderColor: rootStyle.getPropertyValue('--vip').trim(), tension:.3, pointRadius:2}
+      ]
+    },
+    options: {
+      responsive:true,
+      plugins:{ legend:{ labels:{ color:textColor, font:{family:'Inter'} } } },
+      scales:{
+        x:{ ticks:{ color:textColor, font:{family:'JetBrains Mono', size:10} }, grid:{ color:gridColor } },
+        y:{ ticks:{ color:textColor, font:{family:'JetBrains Mono', size:10}, callback:v=>fmtMoney(v) }, grid:{ color:gridColor } }
+      }
+    }
+  });
 }
 
 function renderTemsilciPage(viewDate){
@@ -773,6 +891,8 @@ function openMemberModal(login){
       <div><div class="k">İlk yatırım</div><div class="v">${fmtMoney(first.ilk_yatirim)}</div></div>
       <div><div class="k">Kayıtlı gün sayısı</div><div class="v">${history.length}</div></div>
     </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Toplam yatırım seyri</div>
+    <canvas id="memberSparkline" height="70" style="margin-bottom:18px;"></canvas>
     <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Gün gün geçmiş</div>
     <div class="table-wrap"><table>
       <thead><tr><th>Tarih</th><th>Segment</th><th>Yat. adedi</th><th>Toplam yatırım</th><th>Çek. adedi</th><th>Toplam çekim</th></tr></thead>
@@ -785,6 +905,27 @@ function openMemberModal(login){
     ${latest.oyunlar ? `<div style="margin-top:14px;font-size:12px;color:var(--muted)">Oynadığı oyunlar</div><div style="font-size:13px;margin-top:4px">${latest.oyunlar}</div>` : ''}
   `;
   document.getElementById('modalBg').classList.add('open');
+  renderMemberSparkline(history);
+}
+let sparklineInstance = null;
+function renderMemberSparkline(history){
+  const canvas = document.getElementById('memberSparkline');
+  if(!canvas || typeof Chart === 'undefined') return;
+  if(sparklineInstance) sparklineInstance.destroy();
+  const rootStyle = getComputedStyle(document.documentElement);
+  sparklineInstance = new Chart(canvas, {
+    type:'line',
+    data:{
+      labels: history.map(h=>h.tarih),
+      datasets:[{ data: history.map(h=>h.toplam_yatirim), borderColor: rootStyle.getPropertyValue('--accent').trim(), backgroundColor: rootStyle.getPropertyValue('--accent-dim').trim(), fill:true, tension:.3, pointRadius:2 }]
+    },
+    options:{ responsive:true, plugins:{legend:{display:false}},
+      scales:{
+        x:{ ticks:{ color: rootStyle.getPropertyValue('--muted').trim(), font:{family:'JetBrains Mono', size:9} }, grid:{display:false} },
+        y:{ ticks:{ color: rootStyle.getPropertyValue('--muted').trim(), font:{family:'JetBrains Mono', size:9}, callback:v=>fmtMoney(v) }, grid:{ color: rootStyle.getPropertyValue('--border').trim() } }
+      }
+    }
+  });
 }
 function closeModal(){ document.getElementById('modalBg').classList.remove('open'); }
 
@@ -800,6 +941,8 @@ document.getElementById('fileInput').addEventListener('change', function(){
   }
 });
 
+let pendingUpload = null;
+
 async function handleUpload(){
   if(!sb){ document.getElementById('uploadStatus').textContent = 'Önce Ayarlar sayfasından Supabase bağlantısı kurun.'; return; }
   const fileInput = document.getElementById('fileInput');
@@ -813,13 +956,16 @@ async function handleUpload(){
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(new Uint8Array(buf), {type:'array'});
   const records = [];
+  const sheetCounts = {};
   wb.SheetNames.forEach(name => {
     const segment = SHEET_MAP[name.trim()];
     if(!segment) return;
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], {defval:''});
+    let count = 0;
     rows.forEach(r => {
       const login = String(r['Login']||'').trim();
       if(!login) return;
+      count++;
       records.push({
         tarih: dateStr,
         login: login,
@@ -838,9 +984,36 @@ async function handleUpload(){
         oyunlar: String(r['Detay']||'')
       });
     });
+    sheetCounts[name] = count;
   });
   if(records.length===0){ status.textContent='Sekme isimleri beklenenle eşleşmedi, veri bulunamadı.'; return; }
 
+  const existing = store_existingLoginsForDate(dateStr);
+  const yeniSayisi = records.filter(r => !existing.has(r.login)).length;
+  const guncellenenSayisi = records.length - yeniSayisi;
+
+  pendingUpload = {records, dateStr, fileName: file.name};
+  status.textContent = '';
+  const previewLines = Object.entries(sheetCounts).map(([sheet,c])=>`• ${sheet}: ${c} satır`).join('<br>');
+  document.getElementById('uploadPreviewText').innerHTML = `
+    <b>${dateStr}</b> tarihi için <b>${records.length}</b> kayıt okundu (${file.name})<br>
+    ${previewLines}<br><br>
+    ${existing.size>0 ? `${yeniSayisi} yeni üye, ${guncellenenSayisi} güncellenecek kayıt (bu tarih için zaten ${existing.size} kayıt var — üzerine yazılacak).` : `Bu tarih için ilk kayıt — hepsi yeni eklenecek.`}
+  `;
+  document.getElementById('uploadPreview').style.display = 'block';
+}
+function store_existingLoginsForDate(dateStr){
+  return new Set(Object.keys(latestByDate[dateStr] || {}));
+}
+function cancelUpload(){
+  pendingUpload = null;
+  document.getElementById('uploadPreview').style.display = 'none';
+  document.getElementById('fileInput').value = '';
+}
+async function confirmUpload(){
+  if(!pendingUpload) return;
+  const {records, dateStr, fileName} = pendingUpload;
+  const status = document.getElementById('uploadStatus');
   status.textContent = `Yükleniyor... 0/${records.length}`;
   const chunkSize = 500;
   for(let i=0;i<records.length;i+=chunkSize){
@@ -849,9 +1022,26 @@ async function handleUpload(){
     if(error){ status.textContent = 'Hata: ' + error.message; return; }
     status.textContent = `Yükleniyor... ${Math.min(i+chunkSize,records.length)}/${records.length}`;
   }
+  await sb.from('yukleme_gecmisi').insert({
+    tarih: dateStr, kayit_sayisi: records.length, dosya_adi: fileName,
+    yukleyen: (await sb.auth.getUser()).data.user?.email || null
+  });
   status.textContent = `${records.length} üye kaydedildi (${dateStr}).`;
-  fileInput.value = '';
-  refreshData();
+  document.getElementById('uploadPreview').style.display = 'none';
+  document.getElementById('fileInput').value = '';
+  pendingUpload = null;
+  await refreshData();
+  await sendUploadAlerts(dateStr);
+  renderUploadLog();
+}
+async function renderUploadLog(){
+  if(!sb) return;
+  const {data, error} = await sb.from('yukleme_gecmisi').select('*').order('yuklenme_zamani', {ascending:false}).limit(10);
+  const wrap = document.getElementById('uploadLogWrap');
+  if(error || !data || data.length===0){ wrap.innerHTML = ''; return; }
+  wrap.innerHTML = `<h1 class="page-title" style="margin-top:8px;font-size:14px">Son yüklemeler</h1>
+    <div class="table-wrap"><table><thead><tr><th>Tarih</th><th>Kayıt sayısı</th><th>Dosya</th><th>Yükleyen</th><th>Zaman</th></tr></thead>
+    <tbody>${data.map(d=>`<tr><td>${d.tarih}</td><td>${fmtInt(d.kayit_sayisi)}</td><td>${d.dosya_adi||''}</td><td>${d.yukleyen||''}</td><td>${new Date(d.yuklenme_zamani).toLocaleString('tr-TR')}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
 /* ================= BAŞLAT ================= */
