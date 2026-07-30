@@ -565,11 +565,17 @@ function isTerfiYaklasan(toplam){
   return toplam >= TERFI_RANGE.min && toplam <= TERFI_RANGE.max;
 }
 function lastIncreaseDate(login, uptoDate){
+  return lastFieldIncreaseDate(login, uptoDate, 'yatirim_adedi');
+}
+function lastWithdrawalDate(login, uptoDate){
+  return lastFieldIncreaseDate(login, uptoDate, 'cekim_adedi');
+}
+function lastFieldIncreaseDate(login, uptoDate, field){
   const hist = (historyByLogin[login]||[]).filter(h => h.tarih <= uptoDate);
   for(let i=hist.length-1;i>0;i--){
-    if(hist[i].yatirim_adedi > hist[i-1].yatirim_adedi) return hist[i].tarih;
+    if(hist[i][field] > hist[i-1][field]) return hist[i].tarih;
   }
-  if(hist.length && hist[0].yatirim_adedi > 0) return hist[0].tarih;
+  if(hist.length && hist[0][field] > 0) return hist[0].tarih;
   return null;
 }
 function daysBetween(d1, d2){
