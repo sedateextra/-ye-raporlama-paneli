@@ -118,6 +118,16 @@
   .kv .k{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
   .kv .v{font-family:var(--font-mono);font-size:14px;font-weight:600;margin-top:3px;font-variant-numeric:tabular-nums;}
   .placeholder-page{padding:60px 20px;text-align:center;color:var(--muted);border:1px dashed var(--border);border-radius:10px;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);border-top:1px solid var(--border);border-left:1px solid var(--border);margin-top:18px;max-width:640px;margin-left:auto;margin-right:auto;}
+  .cal-dow{font-family:var(--font-mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;text-align:center;padding:8px 0;color:var(--muted);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--panel2);}
+  .cal-day{position:relative;min-height:70px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:6px 8px;cursor:pointer;background:var(--panel);transition:background .12s;}
+  .cal-day:hover{background:var(--panel2);}
+  .cal-day.empty{background:transparent;cursor:default;}
+  .cal-day .num{font-family:var(--font-mono);font-size:12px;color:var(--muted);}
+  .cal-day.today{background:var(--accent-dim);}
+  .cal-day.today .num{color:var(--accent);font-weight:600;}
+  .cal-day .dot{position:absolute;bottom:7px;left:8px;width:6px;height:6px;border-radius:50%;background:var(--terfi);}
+  .cal-day .preview{font-size:10.5px;color:var(--text);margin-top:4px;line-height:1.3;overflow:hidden;max-height:28px;}
   .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);}
   .login-box{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:32px 30px;width:100%;max-width:340px;}
   .login-box input{font-family:var(--font-body);}
@@ -190,6 +200,10 @@
       <div class="navitem" data-page="cagri" onclick="goPage('cagri')">Çağrı Raporları</div>
     </div>
     <div class="navgroup">
+      <div class="glabel">Kişisel</div>
+      <div class="navitem" data-page="planlama" onclick="goPage('planlama')">Planlama</div>
+    </div>
+    <div class="navgroup">
       <div class="glabel">Sistem</div>
       <div class="navitem" data-page="veri-yukleme" onclick="goPage('veri-yukleme')">Veri Yükleme</div>
       <div class="navitem" data-page="ayarlar" onclick="goPage('ayarlar')">Ayarlar</div>
@@ -244,6 +258,18 @@
         <h1 class="page-title">Çağrı Raporları</h1>
         <div class="page-sub">Henüz bu panele bağlanmadı</div>
         <div class="placeholder-page">Çağrı verileri ayrı bir Supabase yapısıyla bu panele entegre edilecek — henüz kurulmadı.</div>
+      </div>
+
+      <!-- PLANLAMA -->
+      <div class="page" id="page-planlama">
+        <h1 class="page-title">Planlama</h1>
+        <div class="page-sub">Kişisel hatırlatmalarınız — sadece siz görürsünüz</div>
+        <div class="toolbar" style="justify-content:center;">
+          <button class="btn secondary" onclick="changePlanlamaMonth(-1)">‹</button>
+          <div id="planlamaMonthLabel" style="font-family:var(--font-display);font-size:18px;min-width:170px;text-align:center;"></div>
+          <button class="btn secondary" onclick="changePlanlamaMonth(1)">›</button>
+        </div>
+        <div id="planlamaGrid" class="cal-grid"></div>
       </div>
 
       <!-- VERİ YÜKLEME -->
@@ -401,6 +427,7 @@ function showApp(session){
   document.getElementById('userEmail').textContent = session.user.email;
   refreshData();
   renderUploadLog();
+  loadHatirlatmalar().then(showTodayReminderPopupIfNeeded);
 }
 async function handleLogin(){
   const email = document.getElementById('loginEmail').value.trim();
@@ -598,12 +625,15 @@ function withDeltas(rows, compareDate){
     };
   });
 }
-function applyCommonFilters(rows, containerId){
+function applyCommonFilters(rows, containerId, viewDate){
   const search = document.getElementById(containerId+'-search');
   const rep = document.getElementById(containerId+'-rep');
   const kayit = document.getElementById(containerId+'-kayit');
   const minT = document.getElementById(containerId+'-min');
   const maxT = document.getElementById(containerId+'-max');
+  const minAdet = document.getElementById(containerId+'-minAdet');
+  const maxAdet = document.getElementById(containerId+'-maxAdet');
+  const hareketsizlik = document.getElementById(containerId+'-hareketsizlik');
   let out = rows;
   if(search && search.value.trim()){
     const s = search.value.trim().toLowerCase();
@@ -616,6 +646,15 @@ function applyCommonFilters(rows, containerId){
   }
   if(minT && minT.value !== ''){ out = out.filter(r => r.toplam_yatirim >= parseFloat(minT.value)); }
   if(maxT && maxT.value !== ''){ out = out.filter(r => r.toplam_yatirim <= parseFloat(maxT.value)); }
+  if(minAdet && minAdet.value !== ''){ out = out.filter(r => r.yatirim_adedi >= parseInt(minAdet.value)); }
+  if(maxAdet && maxAdet.value !== ''){ out = out.filter(r => r.yatirim_adedi <= parseInt(maxAdet.value)); }
+  if(hareketsizlik && hareketsizlik.value){
+    const esikGun = parseInt(hareketsizlik.value);
+    out = out.filter(r => {
+      const d = lastIncreaseDate(r.login, viewDate);
+      return d && daysBetween(d, viewDate) >= esikGun;
+    });
+  }
   return out;
 }
 function repOptionsHtml(rows){
@@ -639,18 +678,24 @@ function deltaSpan(val, isMoney){
 function renderSegmentPage(containerId, title, sub, rows, opts){
   opts = opts || {};
   const compareDate = document.getElementById('compareDate').value;
+  const viewDate = document.getElementById('viewDate').value;
   const el = document.getElementById('page-'+containerId);
   const prev = {
     search: document.getElementById(containerId+'-search')?.value || '',
     rep: document.getElementById(containerId+'-rep')?.value || '',
     kayit: document.getElementById(containerId+'-kayit')?.value || '',
     min: document.getElementById(containerId+'-min')?.value || '',
-    max: document.getElementById(containerId+'-max')?.value || ''
+    max: document.getElementById(containerId+'-max')?.value || '',
+    minAdet: document.getElementById(containerId+'-minAdet')?.value || '',
+    maxAdet: document.getElementById(containerId+'-maxAdet')?.value || '',
+    hareketsizlik: document.getElementById(containerId+'-hareketsizlik')?.value || ''
   };
   const repOpts = [...new Set(rows.map(r=>r.temsilci).filter(Boolean))].sort()
     .map(r=>`<option value="${r}" ${r===prev.rep?'selected':''}>${r}</option>`).join('');
   const kayitOpts = [['','Kayıt: tümü'],['7','Son 7 gün'],['30','Son 30 gün']]
     .map(([v,l])=>`<option value="${v}" ${v===prev.kayit?'selected':''}>${l}</option>`).join('');
+  const hareketsizlikOpts = [['','Hareketsizlik: tümü'],['5','5+ gün'],['12','12+ gün'],['21','21+ gün'],['30','30+ gün']]
+    .map(([v,l])=>`<option value="${v}" ${v===prev.hareketsizlik?'selected':''}>${l}</option>`).join('');
   const filterBoxes = `
     <div class="toolbar">
       <div class="toolbar-left">
@@ -659,13 +704,15 @@ function renderSegmentPage(containerId, title, sub, rows, opts){
         <select id="${containerId}-kayit" onchange="renderCurrentPage('${containerId}')">${kayitOpts}</select>
         <input type="number" id="${containerId}-min" placeholder="Min ₺" style="width:90px" value="${prev.min}" oninput="renderCurrentPage('${containerId}')">
         <input type="number" id="${containerId}-max" placeholder="Max ₺" style="width:90px" value="${prev.max}" oninput="renderCurrentPage('${containerId}')">
+        <input type="number" id="${containerId}-minAdet" placeholder="Min yat. adedi" style="width:110px" value="${prev.minAdet}" oninput="renderCurrentPage('${containerId}')">
+        <input type="number" id="${containerId}-maxAdet" placeholder="Max yat. adedi" style="width:110px" value="${prev.maxAdet}" oninput="renderCurrentPage('${containerId}')">
+        <select id="${containerId}-hareketsizlik" onchange="renderCurrentPage('${containerId}')">${hareketsizlikOpts}</select>
       </div>
       <button class="btn secondary" onclick="exportRows('${containerId}')">Excel'e Aktar</button>
     </div>`;
-  const filtered = applyCommonFilters(rows, containerId);
+  const filtered = applyCommonFilters(rows, containerId, viewDate);
   const withD = withDeltas(filtered, compareDate);
 
-  const viewDate = document.getElementById('viewDate').value;
   const extraCols = opts.extraCols || [];
   let html = `<h1 class="page-title">${title}</h1><div class="page-sub">${sub} · ${withD.length} üye</div>`;
   html += filterBoxes;
@@ -721,6 +768,7 @@ function exportRows(containerId){
 
 /* ================= SAYFA RENDER YÖNLENDİRME ================= */
 function renderCurrentPage(page){
+  if(page==='planlama'){ renderPlanlamaPage(); return; }
   if(dateList.length===0) return;
   const viewDate = document.getElementById('viewDate').value;
   if(!viewDate) return;
@@ -1089,6 +1137,110 @@ async function confirmUpload(){
   await sendUploadAlerts(dateStr);
   renderUploadLog();
 }
+/* ================= PLANLAMA (kişisel hatırlatmalar) ================= */
+const AY_ADLARI = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+const GUN_ADLARI = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'];
+let hatirlatmalar = {}; // "YYYY-MM-DD" -> [{id, metin}]
+const bugun = new Date();
+let planlamaYear = bugun.getFullYear();
+let planlamaMonth = bugun.getMonth();
+function fmtKey(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+const bugunKey = fmtKey(bugun);
+
+async function loadHatirlatmalar(){
+  if(!sb) return;
+  const {data, error} = await sb.from('hatirlatmalar').select('*').order('created_at', {ascending:true});
+  hatirlatmalar = {};
+  if(error || !data) return;
+  data.forEach(r => {
+    if(!hatirlatmalar[r.tarih]) hatirlatmalar[r.tarih] = [];
+    hatirlatmalar[r.tarih].push({id:r.id, metin:r.metin});
+  });
+}
+function changePlanlamaMonth(delta){
+  planlamaMonth += delta;
+  if(planlamaMonth < 0){ planlamaMonth = 11; planlamaYear--; }
+  if(planlamaMonth > 11){ planlamaMonth = 0; planlamaYear++; }
+  renderPlanlamaPage();
+}
+function renderPlanlamaPage(){
+  const labelEl = document.getElementById('planlamaMonthLabel');
+  const gridEl = document.getElementById('planlamaGrid');
+  if(!labelEl || !gridEl) return;
+  labelEl.textContent = `${AY_ADLARI[planlamaMonth]} ${planlamaYear}`;
+  let html = GUN_ADLARI.map(g=>`<div class="cal-dow">${g}</div>`).join('');
+  const firstOfMonth = new Date(planlamaYear, planlamaMonth, 1);
+  let startOffset = firstOfMonth.getDay() - 1;
+  if(startOffset < 0) startOffset = 6;
+  const daysInMonth = new Date(planlamaYear, planlamaMonth+1, 0).getDate();
+  for(let i=0;i<startOffset;i++) html += `<div class="cal-day empty"></div>`;
+  for(let day=1; day<=daysInMonth; day++){
+    const d = new Date(planlamaYear, planlamaMonth, day);
+    const key = fmtKey(d);
+    const items = hatirlatmalar[key] || [];
+    const isToday = key === bugunKey;
+    const preview = items.slice(0,2).map(t=>t.metin).join(', ');
+    html += `<div class="cal-day ${isToday?'today':''}" onclick="openPlanlamaDay('${key}')">
+      <div class="num">${day}</div>
+      ${items.length ? `<div class="dot"></div><div class="preview">${escapeHtmlP(preview)}</div>` : ''}
+    </div>`;
+  }
+  gridEl.innerHTML = html;
+}
+function escapeHtmlP(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function openPlanlamaDay(key){
+  renderPlanlamaModal(key, false);
+  document.getElementById('modalBg').classList.add('open');
+}
+function renderPlanlamaModal(key, isTodayPopup){
+  const [y,m,d] = key.split('-');
+  const dateObj = new Date(parseInt(y), parseInt(m)-1, parseInt(d));
+  const dayName = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'][dateObj.getDay()];
+  const items = hatirlatmalar[key] || [];
+  const modal = document.getElementById('modalContent');
+  modal.innerHTML = `
+    <button class="close" onclick="closeModal()">✕</button>
+    <h3>${isTodayPopup?'Bugün — ':''}${parseInt(d)} ${AY_ADLARI[parseInt(m)-1]}</h3>
+    <div class="modal-sub">${dayName}${isTodayPopup?' için hatırlatmaların':''}</div>
+    <div id="planlamaItems" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+      ${items.length ? items.map(it=>`<div style="display:flex;align-items:center;gap:8px;background:var(--panel2);border-radius:6px;padding:8px 12px;font-size:13px;">
+        <span style="flex:1;">${escapeHtmlP(it.metin)}</span>
+        <button class="btn secondary" style="padding:3px 9px;" onclick="removeHatirlatma(${it.id}, '${key}')">Sil</button>
+      </div>`).join('') : '<div style="font-size:12px;color:var(--muted);font-style:italic;">Bu gün için henüz not yok.</div>'}
+    </div>
+    <div style="display:flex;gap:8px;">
+      <input type="text" id="planlamaNewInput" placeholder="Hatırlatma ekle..." style="flex:1;" onkeydown="if(event.key==='Enter')addHatirlatma('${key}')">
+      <button class="btn" onclick="addHatirlatma('${key}')">Ekle</button>
+    </div>
+  `;
+  const input = document.getElementById('planlamaNewInput');
+  if(input) input.focus();
+}
+async function addHatirlatma(key){
+  const input = document.getElementById('planlamaNewInput');
+  const val = input.value.trim();
+  if(!val || !sb) return;
+  const {error} = await sb.from('hatirlatmalar').insert({tarih:key, metin:val});
+  if(error){ return; }
+  await loadHatirlatmalar();
+  renderPlanlamaModal(key, false);
+  renderPlanlamaPage();
+}
+async function removeHatirlatma(id, key){
+  if(!sb) return;
+  await sb.from('hatirlatmalar').delete().eq('id', id);
+  await loadHatirlatmalar();
+  renderPlanlamaModal(key, false);
+  renderPlanlamaPage();
+}
+function showTodayReminderPopupIfNeeded(){
+  const items = hatirlatmalar[bugunKey] || [];
+  if(items.length === 0) return;
+  const list = items.map(it=>escapeHtmlP(it.metin)).join('<br>');
+  showToast('📌 Bugünün notları', list, 'terfi', 'planlama');
+}
+
 async function renderUploadLog(){
   if(!sb) return;
   const {data, error} = await sb.from('yukleme_gecmisi').select('*').order('yuklenme_zamani', {ascending:false}).limit(10);
