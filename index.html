@@ -1222,7 +1222,7 @@ async function addHatirlatma(key){
   const val = input.value.trim();
   if(!val || !sb) return;
   const {error} = await sb.from('hatirlatmalar').insert({tarih:key, metin:val});
-  if(error){ return; }
+  if(error){ alert('Hata: ' + error.message); console.error(error); return; }
   await loadHatirlatmalar();
   renderPlanlamaModal(key, false);
   renderPlanlamaPage();
