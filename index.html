@@ -774,12 +774,12 @@ function renderSegmentPage(containerId, title, sub, rows, opts){
 }
 
 const TOPLU_EXPORT_DEFS = [
-  {key:'yatirimsiz', label:'Yatırımsız Gelen Üyeler', sheet:'Yatirimsiz Gelenler', color:'FF8D8A72', filter:(r,viewDate)=>hasSegment(viewDate, r.login, 'yatirimsiz')},
-  {key:'yatirimli', label:'Yatırımlı Gelen Üyeler', sheet:'Yatirimli Gelenler', color:'FF6C93D6', filter:(r,viewDate)=>hasSegment(viewDate, r.login, 'yatirimli')},
-  {key:'vip', label:'VIP Üyeler', sheet:'VIP Uyeler', color:'FFD4AF37', filter:(r)=>r.toplam_yatirim >= VIP_ESIK},
-  {key:'vipyakin-durum', label:'VIP Statüsüne Yaklaşan Üyeler', sheet:'VIP Statusune Yaklasan', color:'FFC9A15C', filter:(r)=>!!tierFor(r.toplam_yatirim)},
-  {key:'terfi', label:'VIP Terfiye Yaklaşan Üyeler', sheet:'VIP Terfiye Yaklasan', color:'FFDD9A4D', filter:(r)=>isTerfiYaklasan(r.toplam_yatirim)},
-  {key:'pasif', label:'Pasif Yatırımlı Üyeler', sheet:'Pasif Yatirimli', color:'FFC1554A', filter:(r,viewDate)=>{
+  {key:'yatirimsiz', label:'Yatırımsız Gelen Üyeler', sheet:'Yatirimsiz Gelenler', color:'FF5C5A4A', filter:(r,viewDate)=>hasSegment(viewDate, r.login, 'yatirimsiz')},
+  {key:'yatirimli', label:'Yatırımlı Gelen Üyeler', sheet:'Yatirimli Gelenler', color:'FF2F5AA8', filter:(r,viewDate)=>hasSegment(viewDate, r.login, 'yatirimli')},
+  {key:'vip', label:'VIP Üyeler', sheet:'VIP Uyeler', color:'FF9C7A1E', filter:(r)=>r.toplam_yatirim >= VIP_ESIK},
+  {key:'vipyakin-durum', label:'VIP Statüsüne Yaklaşan Üyeler', sheet:'VIP Statusune Yaklasan', color:'FF8A6A2F', filter:(r)=>!!tierFor(r.toplam_yatirim)},
+  {key:'terfi', label:'VIP Terfiye Yaklaşan Üyeler', sheet:'VIP Terfiye Yaklasan', color:'FFB5652A', filter:(r)=>isTerfiYaklasan(r.toplam_yatirim)},
+  {key:'pasif', label:'Pasif Yatırımlı Üyeler', sheet:'Pasif Yatirimli', color:'FF8F3A30', filter:(r,viewDate)=>{
     if(!hasSegment(viewDate, r.login, 'yatirimli')) return false;
     const d = lastIncreaseDate(r.login, viewDate);
     return d && daysBetween(d, viewDate) >= PASIF_GUN_ESIGI;
@@ -791,11 +791,10 @@ function buildExportRow(r, viewDate, segKey){
     'Yatırım Adedi':r.yatirim_adedi, 'Toplam Yatırım':r.toplam_yatirim,
     'Çekim Adedi':r.cekim_adedi, 'Toplam Çekim':r.toplam_cekim,
     'İlk Çekim':r.ilk_cekim, 'Son Çekim Tarihi': lastWithdrawalDate(r.login, viewDate) || '',
-    'Kaynak': memberSourceLabel(viewDate, r.login),
     'Oynadığı Oyunlar': r.oyunlar || ''
   };
   if(segKey==='vip'){
-    base['VIP Kontrol'] = r.vip_kontrol||''; base['Hediye Hakkı'] = r.hediye_hakki||'';
+    base['VIP Kontrol'] = r.login; base['Hediye Hakkı'] = r.hediye_hakki||'';
   }
   if(segKey==='vipyakin-durum'){
     const t = tierFor(r.toplam_yatirim);
@@ -809,6 +808,7 @@ function buildExportRow(r, viewDate, segKey){
     base['Son Yatırım Tarihi'] = d || '';
     base['Kaç Gündür Pasif'] = d ? daysBetween(d, viewDate) : '';
   }
+  base['Kaynak'] = memberSourceLabel(viewDate, r.login);
   return base;
 }
 function openTopluExport(){
@@ -879,14 +879,14 @@ async function writeStyledWorkbook(sheetDefs, filename){
       const row = ws.getRow(i);
       const banded = i % 2 === 0;
       row.eachCell({includeEmpty:true}, cell=>{
-        cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb: banded ? 'FFF7F4EC' : 'FFFFFFFF'}};
+        cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb: banded ? 'FFEAE1C4' : 'FFFFFFFF'}};
         cell.border = {
-          top:{style:'thin', color:{argb:'FFE3DCC8'}},
-          left:{style:'thin', color:{argb:'FFE3DCC8'}},
-          right:{style:'thin', color:{argb:'FFE3DCC8'}},
-          bottom:{style:'thin', color:{argb:'FFE3DCC8'}}
+          top:{style:'thin', color:{argb:'FFB9AD87'}},
+          left:{style:'thin', color:{argb:'FFB9AD87'}},
+          right:{style:'thin', color:{argb:'FFB9AD87'}},
+          bottom:{style:'thin', color:{argb:'FFB9AD87'}}
         };
-        cell.font = {size:10.5, color:{argb:'FF2B2F20'}};
+        cell.font = {size:10.5, color:{argb:'FF1C1D14'}};
         cell.alignment = {vertical:'middle', horizontal:'center'};
       });
     }
