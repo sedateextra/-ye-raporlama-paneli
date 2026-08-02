@@ -827,6 +827,15 @@ function openTopluExport(){
   `;
   document.getElementById('modalBg').classList.add('open');
 }
+function colLetter(n){
+  let s = '';
+  while(n > 0){
+    const m = (n-1) % 26;
+    s = String.fromCharCode(65+m) + s;
+    n = Math.floor((n-1)/26);
+  }
+  return s;
+}
 async function writeStyledWorkbook(sheetDefs, filename){
   const wb = new ExcelJS.Workbook();
   const MONEY_COLS = ['Toplam Yatırım', 'Toplam Çekim', 'İlk Çekim'];
@@ -854,6 +863,15 @@ async function writeStyledWorkbook(sheetDefs, filename){
       });
       ws.addRow(rowData);
     });
+
+    const loginColIdx = headers.indexOf('Login') + 1;
+    const vipKontrolColIdx = headers.indexOf('VIP Kontrol') + 1;
+    if(loginColIdx > 0 && vipKontrolColIdx > 0){
+      const loginColLetter = colLetter(loginColIdx);
+      for(let rIdx=2; rIdx<=ws.rowCount; rIdx++){
+        ws.getCell(rIdx, vipKontrolColIdx).value = {formula: `"/kontrol "&${loginColLetter}${rIdx}`};
+      }
+    }
 
     headers.forEach((h, idx) => {
       const col = ws.getColumn(idx+1);
