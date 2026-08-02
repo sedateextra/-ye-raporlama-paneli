@@ -293,6 +293,19 @@
           <button class="btn secondary" onclick="cancelUpload()">Vazgeç</button>
         </div>
         <div id="uploadLogWrap"></div>
+
+        <h1 class="page-title" style="margin-top:32px">Geçmiş Veri Sil</h1>
+        <div class="page-sub">Belirli bir tarih aralığındaki tüm üye verilerini kalıcı olarak siler — geri alınamaz</div>
+        <div class="settings-box" style="max-width:520px;">
+          <label>Başlangıç tarihi</label>
+          <input type="date" id="silBaslangic">
+          <label>Bitiş tarihi</label>
+          <input type="date" id="silBitis">
+          <div style="margin-top:18px;">
+            <button class="btn secondary" onclick="previewSil()">Kaç kayıt silinecek?</button>
+          </div>
+          <div id="silPreview" style="font-size:13px;margin-top:14px;"></div>
+        </div>
       </div>
 
       <!-- AYARLAR -->
@@ -1239,6 +1252,35 @@ function showTodayReminderPopupIfNeeded(){
   if(items.length === 0) return;
   const list = items.map(it=>escapeHtmlP(it.metin)).join('<br>');
   showToast('📌 Bugünün notları', list, 'terfi', 'planlama');
+}
+
+async function previewSil(){
+  if(!sb) return;
+  const start = document.getElementById('silBaslangic').value;
+  const end = document.getElementById('silBitis').value;
+  const status = document.getElementById('silPreview');
+  if(!start || !end){ status.textContent = 'Başlangıç ve bitiş tarihi seçin.'; return; }
+  if(start > end){ status.textContent = 'Başlangıç, bitişten sonra olamaz.'; return; }
+  const {count, error} = await sb.from('gunluk_veri').select('*', {count:'exact', head:true}).gte('tarih', start).lte('tarih', end);
+  if(error){ status.textContent = 'Hata: ' + error.message; return; }
+  status.innerHTML = `<b>${fmtInt(count)}</b> kayıt (${start} – ${end}) kalıcı olarak silinecek.<br><br>
+    <input type="text" id="silOnayInput" placeholder="Onaylamak için SİL yazın" style="margin-bottom:10px;width:220px;"><br>
+    <button class="btn" style="background:var(--pasif);color:#fff;" onclick="confirmSil('${start}','${end}')">Kalıcı Olarak Sil</button>`;
+}
+async function confirmSil(start, end){
+  const onayInput = document.getElementById('silOnayInput');
+  const status = document.getElementById('silPreview');
+  if(onayInput.value.trim() !== 'SİL'){
+    status.innerHTML += '<br><span style="color:var(--red)">Onay için kutuya tam olarak "SİL" yazmalısınız.</span>';
+    return;
+  }
+  status.textContent = 'Siliniyor...';
+  await sb.from('gunluk_veri').delete().gte('tarih', start).lte('tarih', end);
+  await sb.from('gunluk_segment').delete().gte('tarih', start).lte('tarih', end);
+  await sb.from('yukleme_gecmisi').delete().gte('tarih', start).lte('tarih', end);
+  status.textContent = `${start} – ${end} arası veriler silindi.`;
+  await refreshData();
+  renderUploadLog();
 }
 
 async function renderUploadLog(){
