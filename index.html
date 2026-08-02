@@ -828,19 +828,44 @@ function openTopluExport(){
 }
 async function writeStyledWorkbook(sheetDefs, filename){
   const wb = new ExcelJS.Workbook();
+  const MONEY_COLS = ['Toplam Yatırım', 'Toplam Çekim', 'İlk Çekim'];
   sheetDefs.forEach(({name, color, rows}) => {
-    const data = rows.length ? rows : [{Bilgi:'Bu listede üye yok'}];
+    let data = rows.length ? rows.slice() : [{Bilgi:'Bu listede üye yok'}];
+    if(rows.length){
+      data.sort((a,b) => {
+        const t = String(a.Temsilci||'').localeCompare(String(b.Temsilci||''), 'tr');
+        if(t !== 0) return t;
+        return (b['Toplam Yatırım']||0) - (a['Toplam Yatırım']||0);
+      });
+    }
     const headers = Object.keys(data[0]);
+    const dateCols = headers.filter(h => h.includes('Tarih'));
     const ws = wb.addWorksheet(name.substring(0,31), {views:[{state:'frozen', ySplit:1}]});
     ws.columns = headers.map(h => ({header:h, key:h, width: Math.max(14, h.length+4)}));
-    data.forEach(r => ws.addRow(r));
+
+    data.forEach(r => {
+      const rowData = {...r};
+      dateCols.forEach(dc => {
+        if(rowData[dc]){
+          const parsed = new Date(rowData[dc]);
+          rowData[dc] = isNaN(parsed) ? rowData[dc] : parsed;
+        }
+      });
+      ws.addRow(rowData);
+    });
+
+    headers.forEach((h, idx) => {
+      const col = ws.getColumn(idx+1);
+      if(MONEY_COLS.includes(h)) col.numFmt = '#,##0 "₺"';
+      if(dateCols.includes(h)) col.numFmt = 'dd.mm.yyyy';
+    });
 
     const headerRow = ws.getRow(1);
     headerRow.height = 22;
     headerRow.eachCell(cell=>{
       cell.font = {bold:true, color:{argb:'FFFFFFFF'}, size:11};
       cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb: color || 'FFC9A15C'}};
-      cell.alignment = {vertical:'middle', horizontal:'left'};
+      cell.alignment = {vertical:'middle', horizontal:'center'};
       cell.border = {bottom:{style:'medium', color:{argb:'FF2B2F20'}}};
     });
 
@@ -851,6 +876,7 @@ async function writeStyledWorkbook(sheetDefs, filename){
         cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb: banded ? 'FFF7F4EC' : 'FFFFFFFF'}};
         cell.border = {bottom:{style:'thin', color:{argb:'FFE3DCC8'}}};
         cell.font = {size:10.5, color:{argb:'FF2B2F20'}};
+        cell.alignment = {vertical:'middle', horizontal:'center'};
       });
     }
     ws.autoFilter = {from:{row:1,column:1}, to:{row:1, column:headers.length}};
