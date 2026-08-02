@@ -791,7 +791,8 @@ function buildExportRow(r, viewDate, segKey){
     'Yatırım Adedi':r.yatirim_adedi, 'Toplam Yatırım':r.toplam_yatirim,
     'Çekim Adedi':r.cekim_adedi, 'Toplam Çekim':r.toplam_cekim,
     'İlk Çekim':r.ilk_cekim, 'Son Çekim Tarihi': lastWithdrawalDate(r.login, viewDate) || '',
-    'Kaynak': memberSourceLabel(viewDate, r.login)
+    'Kaynak': memberSourceLabel(viewDate, r.login),
+    'Oynadığı Oyunlar': r.oyunlar || ''
   };
   if(segKey==='vip'){
     base['VIP Kontrol'] = r.vip_kontrol||''; base['Hediye Hakkı'] = r.hediye_hakki||'';
@@ -866,7 +867,12 @@ async function writeStyledWorkbook(sheetDefs, filename){
       cell.font = {bold:true, color:{argb:'FFFFFFFF'}, size:11};
       cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb: color || 'FFC9A15C'}};
       cell.alignment = {vertical:'middle', horizontal:'center'};
-      cell.border = {bottom:{style:'medium', color:{argb:'FF2B2F20'}}};
+      cell.border = {
+        top:{style:'medium', color:{argb:'FF2B2F20'}},
+        left:{style:'thin', color:{argb:'FF2B2F20'}},
+        right:{style:'thin', color:{argb:'FF2B2F20'}},
+        bottom:{style:'medium', color:{argb:'FF2B2F20'}}
+      };
     });
 
     for(let i=2;i<=ws.rowCount;i++){
@@ -874,7 +880,12 @@ async function writeStyledWorkbook(sheetDefs, filename){
       const banded = i % 2 === 0;
       row.eachCell({includeEmpty:true}, cell=>{
         cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb: banded ? 'FFF7F4EC' : 'FFFFFFFF'}};
-        cell.border = {bottom:{style:'thin', color:{argb:'FFE3DCC8'}}};
+        cell.border = {
+          top:{style:'thin', color:{argb:'FFE3DCC8'}},
+          left:{style:'thin', color:{argb:'FFE3DCC8'}},
+          right:{style:'thin', color:{argb:'FFE3DCC8'}},
+          bottom:{style:'thin', color:{argb:'FFE3DCC8'}}
+        };
         cell.font = {size:10.5, color:{argb:'FF2B2F20'}};
         cell.alignment = {vertical:'middle', horizontal:'center'};
       });
