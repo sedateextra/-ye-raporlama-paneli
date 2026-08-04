@@ -298,6 +298,19 @@
         </div>
         <div id="uploadLogWrap"></div>
 
+        <h1 class="page-title" style="margin-top:32px">Rapor Tarihini Değiştir</h1>
+        <div class="page-sub">Yanlış tarihle yüklenmiş bir raporun tarihini düzeltin</div>
+        <div class="settings-box" style="max-width:520px;">
+          <label>Mevcut (eski) tarih</label>
+          <select id="tarihDegistirEski"></select>
+          <label>Yeni tarih</label>
+          <input type="date" id="tarihDegistirYeni">
+          <div style="margin-top:18px;">
+            <button class="btn" onclick="tarihDegistir()">Tarihi Değiştir</button>
+          </div>
+          <div id="tarihDegistirStatus" style="font-size:12px;color:var(--muted);margin-top:12px;"></div>
+        </div>
+
         <h1 class="page-title" style="margin-top:32px">Geçmiş Veri Sil</h1>
         <div class="page-sub">Belirli bir tarih aralığındaki tüm üye verilerini kalıcı olarak siler — geri alınamaz</div>
         <div class="settings-box" style="max-width:520px;">
@@ -599,6 +612,8 @@ function initDateSelectors(){
   cmpSel.innerHTML = '<option value="">(karşılaştırma yok)</option>' + dateList.map(d=>`<option value="${d}">${d}</option>`).join('');
   if(dateList.includes(curView)) viewSel.value = curView; else if(dateList[0]) viewSel.value = dateList[0];
   if(dateList.includes(curCmp)) cmpSel.value = curCmp; else if(dateList[1]) cmpSel.value = dateList[1];
+  const tarihDegistirSel = document.getElementById('tarihDegistirEski');
+  if(tarihDegistirSel) tarihDegistirSel.innerHTML = dateList.map(d=>`<option value="${d}">${d}</option>`).join('');
 }
 
 /* ================= TÜRETİLMİŞ SEGMENTLER ================= */
@@ -1201,11 +1216,7 @@ document.getElementById('reportDate').valueAsDate = new Date();
 document.getElementById('fileInput').addEventListener('change', function(){
   const f = this.files[0];
   if(!f) return;
-  const m = f.name.match(/(\d{2})[_-](\d{2})/);
-  if(m){
-    const year = new Date().getFullYear();
-    document.getElementById('reportDate').value = `${year}-${m[2]}-${m[1]}`;
-  }
+  document.getElementById('reportDate').valueAsDate = new Date();
 });
 
 let pendingUpload = null;
@@ -1419,6 +1430,25 @@ function showTodayReminderPopupIfNeeded(){
   showToast('📌 Bugünün notları', list, 'terfi', 'planlama');
 }
 
+async function tarihDegistir(){
+  if(!sb) return;
+  const eski = document.getElementById('tarihDegistirEski').value;
+  const yeni = document.getElementById('tarihDegistirYeni').value;
+  const status = document.getElementById('tarihDegistirStatus');
+  if(!eski || !yeni){ status.textContent = 'Eski ve yeni tarih seçin.'; return; }
+  if(eski === yeni){ status.textContent = 'Yeni tarih eskisiyle aynı olamaz.'; return; }
+  status.textContent = 'Güncelleniyor...';
+  const r1 = await sb.from('gunluk_veri').update({tarih:yeni}).eq('tarih', eski);
+  if(r1.error){
+    status.textContent = 'Hata: ' + r1.error.message + ' — Yeni tarihte bu üyeler için zaten kayıt olabilir; önce o tarihi silmeniz gerekebilir.';
+    return;
+  }
+  await sb.from('gunluk_segment').update({tarih:yeni}).eq('tarih', eski);
+  await sb.from('yukleme_gecmisi').update({tarih:yeni}).eq('tarih', eski);
+  status.textContent = `${eski} tarihli veriler ${yeni} olarak güncellendi.`;
+  await refreshData();
+  renderUploadLog();
+}
 async function previewSil(){
   if(!sb) return;
   const start = document.getElementById('silBaslangic').value;
