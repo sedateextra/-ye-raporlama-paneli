@@ -264,10 +264,15 @@
       <div class="page" id="page-raporlar">
         <h1 class="page-title">Haftalık Raporlar</h1>
         <div class="page-sub">Yatırımsız Gelenler'den dönüşen üyelerin haftalık ilk/devam yatırım performansı, temsilci bazında</div>
-        <div class="toolbar" style="justify-content:center;">
-          <button class="btn secondary" onclick="changeRaporHafta(-1)">‹ Önceki hafta</button>
+        <div class="toolbar" style="justify-content:center;flex-wrap:wrap;">
+          <button class="btn secondary" onclick="changeRaporHafta(-1)">‹ 7 gün geri</button>
           <div id="raporHaftaLabel" style="font-family:var(--font-display);font-size:18px;min-width:220px;text-align:center;"></div>
-          <button class="btn secondary" onclick="changeRaporHafta(1)">Sonraki hafta ›</button>
+          <button class="btn secondary" onclick="changeRaporHafta(1)">7 gün ileri ›</button>
+        </div>
+        <div class="toolbar" style="justify-content:center;">
+          <div><label style="font-size:11px;color:var(--muted)">Başlangıç</label><br><input type="date" id="raporBaslangicInput"></div>
+          <div><label style="font-size:11px;color:var(--muted)">Bitiş</label><br><input type="date" id="raporBitisInput"></div>
+          <button class="btn" onclick="applyRaporTarih()">Uygula</button>
           <button class="btn secondary" onclick="exportRaporlar()">Excel'e Aktar</button>
         </div>
         <div id="raporlarWrap" style="margin-top:18px;"></div>
@@ -1359,7 +1364,6 @@ async function confirmUpload(){
   renderUploadLog();
 }
 /* ================= HAFTALIK RAPORLAR ================= */
-let raporHaftaBaslangic = haftaBaslangici(new Date());
 function haftaBaslangici(d){
   const day = d.getDay(); // 0=Pazar
   const start = new Date(d);
@@ -1367,8 +1371,22 @@ function haftaBaslangici(d){
   start.setHours(0,0,0,0);
   return start;
 }
+let raporBaslangic = haftaBaslangici(new Date());
+let raporBitis = new Date(raporBaslangic);
+raporBitis.setDate(raporBaslangic.getDate()+6);
+
 function changeRaporHafta(delta){
-  raporHaftaBaslangic.setDate(raporHaftaBaslangic.getDate() + delta*7);
+  raporBaslangic.setDate(raporBaslangic.getDate() + delta*7);
+  raporBitis.setDate(raporBitis.getDate() + delta*7);
+  renderRaporlarPage();
+}
+function applyRaporTarih(){
+  const b = document.getElementById('raporBaslangicInput').value;
+  const s = document.getElementById('raporBitisInput').value;
+  if(!b || !s){ alert('Başlangıç ve bitiş tarihi seçin.'); return; }
+  if(b > s){ alert('Başlangıç, bitişten sonra olamaz.'); return; }
+  raporBaslangic = new Date(b);
+  raporBitis = new Date(s);
   renderRaporlarPage();
 }
 function qualifiesFromYatirimsiz(login, uptoDate){
@@ -1389,10 +1407,12 @@ function renderRaporlarPage(){
   const wrap = document.getElementById('raporlarWrap');
   const labelEl = document.getElementById('raporHaftaLabel');
   if(!wrap || !labelEl) return;
-  const start = new Date(raporHaftaBaslangic);
-  const end = new Date(start); end.setDate(start.getDate()+6);
+  const start = raporBaslangic;
+  const end = raporBitis;
   const startKey = fmtKey(start), endKey = fmtKey(end);
   labelEl.textContent = `${start.getDate()} ${AY_ADLARI[start.getMonth()]} – ${end.getDate()} ${AY_ADLARI[end.getMonth()]} ${end.getFullYear()}`;
+  document.getElementById('raporBaslangicInput').value = startKey;
+  document.getElementById('raporBitisInput').value = endKey;
 
   const detayRows = [];
   Object.keys(historyByLogin).forEach(login=>{
@@ -1456,7 +1476,7 @@ async function exportRaporlar(){
   const wrap = document.getElementById('raporlarWrap');
   const rows = wrap._exportRows || [];
   if(rows.length===0){ alert('Aktarılacak veri yok.'); return; }
-  await writeStyledWorkbook([{name:'Haftalik Rapor', color:'FFC9A15C', rows}], `haftalik_rapor_${fmtKey(raporHaftaBaslangic)}.xlsx`);
+  await writeStyledWorkbook([{name:'Haftalik Rapor', color:'FFC9A15C', rows}], `haftalik_rapor_${fmtKey(raporBaslangic)}_${fmtKey(raporBitis)}.xlsx`);
 }
 
 /* ================= PLANLAMA (kişisel hatırlatmalar) ================= */
