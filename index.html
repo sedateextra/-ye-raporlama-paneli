@@ -61,6 +61,8 @@
   .topbar-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
   select,input{background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px;font-family:var(--font-body);}
   select:focus,input:focus{outline:2px solid var(--accent);outline-offset:1px;}
+  input[type=date]{color-scheme: dark;}
+  [data-theme="light"] input[type=date]{color-scheme: light;}
   .content{padding:26px 28px;max-width:1500px;}
   .page{display:none;}
   .page.active{display:block;}
@@ -1380,6 +1382,18 @@ function changeRaporHafta(delta){
   raporBitis.setDate(raporBitis.getDate() + delta*7);
   renderRaporlarPage();
 }
+function initRaporTarihPickers(){
+  const b = document.getElementById('raporBaslangicInput');
+  const s = document.getElementById('raporBitisInput');
+  if(!b || !s || b._pickerBound) return;
+  b._pickerBound = true;
+  b.addEventListener('click', ()=> b.showPicker && b.showPicker());
+  s.addEventListener('click', ()=> s.showPicker && s.showPicker());
+  b.addEventListener('change', ()=>{
+    s.focus();
+    if(s.showPicker) s.showPicker();
+  });
+}
 function applyRaporTarih(){
   const b = document.getElementById('raporBaslangicInput').value;
   const s = document.getElementById('raporBitisInput').value;
@@ -1413,6 +1427,7 @@ function renderRaporlarPage(){
   labelEl.textContent = `${start.getDate()} ${AY_ADLARI[start.getMonth()]} – ${end.getDate()} ${AY_ADLARI[end.getMonth()]} ${end.getFullYear()}`;
   document.getElementById('raporBaslangicInput').value = startKey;
   document.getElementById('raporBitisInput').value = endKey;
+  initRaporTarihPickers();
 
   const detayRows = [];
   Object.keys(historyByLogin).forEach(login=>{
