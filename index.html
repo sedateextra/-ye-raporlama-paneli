@@ -1394,13 +1394,17 @@ function initRaporTarihPickers(){
     if(s.showPicker) s.showPicker();
   });
 }
+function parseLocalDate(s){
+  const [y,m,d] = s.split('-').map(Number);
+  return new Date(y, m-1, d);
+}
 function applyRaporTarih(){
   const b = document.getElementById('raporBaslangicInput').value;
   const s = document.getElementById('raporBitisInput').value;
   if(!b || !s){ alert('Başlangıç ve bitiş tarihi seçin.'); return; }
   if(b > s){ alert('Başlangıç, bitişten sonra olamaz.'); return; }
-  raporBaslangic = new Date(b);
-  raporBitis = new Date(s);
+  raporBaslangic = parseLocalDate(b);
+  raporBitis = parseLocalDate(s);
   renderRaporlarPage();
 }
 function qualifiesFromYatirimsiz(login, uptoDate){
