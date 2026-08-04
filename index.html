@@ -196,10 +196,12 @@
       <div class="navitem" data-page="vipyakin-durum" onclick="goPage('vipyakin-durum')">VIP Statüsüne Yaklaşan Üyeler <span class="count" id="cnt-vipyakin-durum"></span></div>
       <div class="navitem" data-page="terfi" onclick="goPage('terfi')">VIP Terfiye Yaklaşan Üyeler <span class="count" id="cnt-terfi"></span></div>
       <div class="navitem" data-page="pasif" onclick="goPage('pasif')">Pasif Yatırımlı Üyeler <span class="count" id="cnt-pasif"></span></div>
+      <div class="navitem" data-page="temsilci-bonus" onclick="goPage('temsilci-bonus')">Temsilci Bonusu Adayları <span class="count" id="cnt-temsilci-bonus"></span></div>
     </div>
     <div class="navgroup">
       <div class="glabel">Ekipler</div>
       <div class="navitem" data-page="temsilci" onclick="goPage('temsilci')">Temsilci Performansı</div>
+      <div class="navitem" data-page="raporlar" onclick="goPage('raporlar')">Haftalık Raporlar</div>
       <div class="navitem" data-page="cagri" onclick="goPage('cagri')">Çağrı Raporları</div>
     </div>
     <div class="navgroup">
@@ -249,12 +251,26 @@
       <div class="page" id="page-vipyakin-durum"></div>
       <div class="page" id="page-terfi"></div>
       <div class="page" id="page-pasif"></div>
+      <div class="page" id="page-temsilci-bonus"></div>
 
       <!-- TEMSİLCİ -->
       <div class="page" id="page-temsilci">
         <h1 class="page-title">Temsilci Performansı</h1>
         <div class="page-sub">Görüntülenen tarih için temsilci bazlı toplamlar</div>
         <div class="table-wrap"><table id="temsilciTable"><thead></thead><tbody></tbody></table></div>
+      </div>
+
+      <!-- HAFTALIK RAPORLAR -->
+      <div class="page" id="page-raporlar">
+        <h1 class="page-title">Haftalık Raporlar</h1>
+        <div class="page-sub">Yatırımsız Gelenler'den dönüşen üyelerin haftalık ilk/devam yatırım performansı, temsilci bazında</div>
+        <div class="toolbar" style="justify-content:center;">
+          <button class="btn secondary" onclick="changeRaporHafta(-1)">‹ Önceki hafta</button>
+          <div id="raporHaftaLabel" style="font-family:var(--font-display);font-size:18px;min-width:220px;text-align:center;"></div>
+          <button class="btn secondary" onclick="changeRaporHafta(1)">Sonraki hafta ›</button>
+          <button class="btn secondary" onclick="exportRaporlar()">Excel'e Aktar</button>
+        </div>
+        <div id="raporlarWrap" style="margin-top:18px;"></div>
       </div>
 
       <!-- ÇAĞRI -->
@@ -517,6 +533,10 @@ const VIP_TIERS = [
   {name:'Elmas', slug:'elmas', min:1996500, max:1999999.99, hedef:2000000},
 ];
 const TERFI_RANGE = {min:7000, max:9999.99, hedef:10000};
+const TEMSILCI_BONUS_RANGE = {min:500, max:9999.99};
+function isTemsilciBonusAday(r){
+  return r.yatirim_adedi === 1 && r.toplam_yatirim >= TEMSILCI_BONUS_RANGE.min && r.toplam_yatirim <= TEMSILCI_BONUS_RANGE.max;
+}
 const PASIF_GUN_ESIGI = 5;
 const VIP_ESIK = 10000;
 
@@ -962,6 +982,7 @@ async function exportRows(containerId){
 /* ================= SAYFA RENDER YÖNLENDİRME ================= */
 function renderCurrentPage(page){
   if(page==='planlama'){ renderPlanlamaPage(); return; }
+  if(page==='raporlar'){ renderRaporlarPage(); return; }
   if(dateList.length===0) return;
   const viewDate = document.getElementById('viewDate').value;
   if(!viewDate) return;
@@ -1023,6 +1044,14 @@ function renderCurrentPage(page){
       ]
     });
   }
+  if(page==='temsilci-bonus'){
+    const rows = baseRowsForDate(viewDate, r=>isTemsilciBonusAday(r));
+    renderSegmentPage('temsilci-bonus', 'Temsilci Bonusu Adayları', 'Sadece 1 yatırımı olan, 500₺–9.999₺ arası toplam yatırımlı üyeler', rows, {
+      extraCols:[
+        {label:'Kaynak', render:r=>memberSourceLabel(viewDate, r.login)}
+      ]
+    });
+  }
 }
 
 /* ================= GENEL BAKIŞ ================= */
@@ -1044,6 +1073,7 @@ function renderGenel(viewDate){
 
   const tierCount = Object.values(dayData).filter(r=>tierFor(r.toplam_yatirim)).length;
   const terfiCount = Object.values(dayData).filter(r=>isTerfiYaklasan(r.toplam_yatirim)).length;
+  const temsilciBonusCount = Object.values(dayData).filter(r=>isTemsilciBonusAday(r)).length;
   const pasifCount = Object.values(dayData).filter(r=>hasSegment(viewDate, r.login, 'yatirimli')).filter(r=>{
     const d = lastIncreaseDate(r.login, viewDate);
     return d && daysBetween(d, viewDate) >= PASIF_GUN_ESIGI;
@@ -1055,6 +1085,7 @@ function renderGenel(viewDate){
   document.getElementById('cnt-vipyakin-durum').textContent = tierCount;
   document.getElementById('cnt-terfi').textContent = terfiCount;
   document.getElementById('cnt-pasif').textContent = pasifCount;
+  document.getElementById('cnt-temsilci-bonus').textContent = temsilciBonusCount;
 
   const cardsWrap = document.getElementById('genelCards');
   function cardHtml(seg, label, c, t, prevC, prevT, page){
@@ -1074,7 +1105,8 @@ function renderGenel(viewDate){
     cardHtml('vip','VIP', cur.vip.c, cur.vip.t, prev?prev.vip.c:0, prev?prev.vip.t:0, 'vip') +
     `<div class="card vipyakin" onclick="goPage('vipyakin-durum')"><div class="label">VIP statüsüne yaklaşan</div><div class="value">${fmtInt(tierCount)} üye</div><div class="sub">Bronz→Elmas eşiklerine yakın</div></div>` +
     `<div class="card terfi" onclick="goPage('terfi')"><div class="label">VIP terfiye yaklaşan</div><div class="value">${fmtInt(terfiCount)} üye</div><div class="sub">7.000₺–9.999₺ arası</div></div>` +
-    `<div class="card pasif" onclick="goPage('pasif')"><div class="label">Pasif yatırımlı</div><div class="value">${fmtInt(pasifCount)} üye</div><div class="sub">${PASIF_GUN_ESIGI}+ gündür hareketsiz</div></div>`;
+    `<div class="card pasif" onclick="goPage('pasif')"><div class="label">Pasif yatırımlı</div><div class="value">${fmtInt(pasifCount)} üye</div><div class="sub">${PASIF_GUN_ESIGI}+ gündür hareketsiz</div></div>` +
+    `<div class="card terfi" onclick="goPage('temsilci-bonus')"><div class="label">Temsilci bonusu adayı</div><div class="value">${fmtInt(temsilciBonusCount)} üye</div><div class="sub">Tek yatırım, 500₺–9.999₺ arası</div></div>`;
 
   renderRepTable('genelRepTable', dayData, cmpData);
   renderTrendChart();
@@ -1326,6 +1358,107 @@ async function confirmUpload(){
   await sendUploadAlerts(dateStr);
   renderUploadLog();
 }
+/* ================= HAFTALIK RAPORLAR ================= */
+let raporHaftaBaslangic = haftaBaslangici(new Date());
+function haftaBaslangici(d){
+  const day = d.getDay(); // 0=Pazar
+  const start = new Date(d);
+  start.setDate(d.getDate() - day);
+  start.setHours(0,0,0,0);
+  return start;
+}
+function changeRaporHafta(delta){
+  raporHaftaBaslangic.setDate(raporHaftaBaslangic.getDate() + delta*7);
+  renderRaporlarPage();
+}
+function qualifiesFromYatirimsiz(login, uptoDate){
+  const hist = (historyByLogin[login]||[]).filter(h=>h.tarih <= uptoDate);
+  return hist.some(h => h.yatirim_adedi === 0 && hasSegment(h.tarih, login, 'yatirimsiz'));
+}
+function firstDepositTransition(login){
+  const hist = historyByLogin[login] || [];
+  for(let i=0;i<hist.length;i++){
+    const prevAdedi = i>0 ? hist[i-1].yatirim_adedi : 0;
+    if(prevAdedi === 0 && hist[i].yatirim_adedi >= 1){
+      return hist[i];
+    }
+  }
+  return null;
+}
+function renderRaporlarPage(){
+  const wrap = document.getElementById('raporlarWrap');
+  const labelEl = document.getElementById('raporHaftaLabel');
+  if(!wrap || !labelEl) return;
+  const start = new Date(raporHaftaBaslangic);
+  const end = new Date(start); end.setDate(start.getDate()+6);
+  const startKey = fmtKey(start), endKey = fmtKey(end);
+  labelEl.textContent = `${start.getDate()} ${AY_ADLARI[start.getMonth()]} – ${end.getDate()} ${AY_ADLARI[end.getMonth()]} ${end.getFullYear()}`;
+
+  const detayRows = [];
+  Object.keys(historyByLogin).forEach(login=>{
+    const trans = firstDepositTransition(login);
+    if(!trans) return;
+    if(trans.tarih < startKey || trans.tarih > endKey) return;
+    if(!qualifiesFromYatirimsiz(login, trans.tarih)) return;
+    const hist = historyByLogin[login];
+    let endRecord = null;
+    for(let i=hist.length-1;i>=0;i--){
+      if(hist[i].tarih <= endKey){ endRecord = hist[i]; break; }
+    }
+    if(!endRecord) endRecord = trans;
+    detayRows.push({
+      login, temsilci: trans.temsilci || endRecord.temsilci,
+      ilkYatirimTarihi: trans.tarih,
+      devamSayisi: Math.max(0, endRecord.yatirim_adedi - 1),
+      toplamTutar: endRecord.toplam_yatirim
+    });
+  });
+
+  const perTemsilci = {};
+  detayRows.forEach(r=>{
+    const k = r.temsilci || '(atanmamış)';
+    if(!perTemsilci[k]) perTemsilci[k] = {ilk:0, devam:0, tutar:0};
+    perTemsilci[k].ilk++;
+    perTemsilci[k].devam += r.devamSayisi;
+    perTemsilci[k].tutar += r.toplamTutar;
+  });
+  const list = Object.entries(perTemsilci).sort((a,b)=>b[1].tutar-a[1].tutar);
+
+  let html = `<div class="table-wrap"><table><thead><tr><th>Temsilci</th><th>İlk Yatırım Sayısı</th><th>Devam Yatırım Sayısı</th><th>Toplam Yatırım</th></tr></thead><tbody>`;
+  if(list.length===0){
+    html += `<tr><td colspan="4" style="text-align:center;color:var(--muted);">Bu hafta için veri yok.</td></tr>`;
+  } else {
+    list.forEach(([temsilci,d])=>{
+      html += `<tr><td>${temsilci}</td><td>${fmtInt(d.ilk)}</td><td>${fmtInt(d.devam)}</td><td>${fmtMoney(d.tutar)}</td></tr>`;
+    });
+  }
+  html += `</tbody></table></div>`;
+
+  html += `<h1 class="page-title" style="margin-top:28px;font-size:15px">Üye bazlı detay</h1>`;
+  html += `<div class="table-wrap"><table><thead><tr><th>Temsilci</th><th>Login</th><th>İlk Yatırım Tarihi</th><th>Devam Yatırım Sayısı</th><th>Toplam Yatırım</th></tr></thead><tbody>`;
+  if(detayRows.length===0){
+    html += `<tr><td colspan="5" style="text-align:center;color:var(--muted);">Kayıt yok.</td></tr>`;
+  } else {
+    detayRows.sort((a,b)=> (a.temsilci||'').localeCompare(b.temsilci||'','tr') || b.toplamTutar-a.toplamTutar);
+    detayRows.forEach(r=>{
+      html += `<tr onclick="openMemberModal('${r.login}')" style="cursor:pointer;"><td>${r.temsilci||''}</td><td>${r.login}</td><td>${r.ilkYatirimTarihi}</td><td>${fmtInt(r.devamSayisi)}</td><td>${fmtMoney(r.toplamTutar)}</td></tr>`;
+    });
+  }
+  html += `</tbody></table></div>`;
+
+  wrap.innerHTML = html;
+  wrap._exportRows = detayRows.map(r=>({
+    Temsilci:r.temsilci, Login:r.login, 'İlk Yatırım Tarihi':r.ilkYatirimTarihi,
+    'Devam Yatırım Sayısı':r.devamSayisi, 'Toplam Yatırım':r.toplamTutar
+  }));
+}
+async function exportRaporlar(){
+  const wrap = document.getElementById('raporlarWrap');
+  const rows = wrap._exportRows || [];
+  if(rows.length===0){ alert('Aktarılacak veri yok.'); return; }
+  await writeStyledWorkbook([{name:'Haftalik Rapor', color:'FFC9A15C', rows}], `haftalik_rapor_${fmtKey(raporHaftaBaslangic)}.xlsx`);
+}
+
 /* ================= PLANLAMA (kişisel hatırlatmalar) ================= */
 const AY_ADLARI = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
 const GUN_ADLARI = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'];
