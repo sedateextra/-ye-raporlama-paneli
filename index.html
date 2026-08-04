@@ -15,20 +15,20 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    /* ledger-in-the-dark: warm graphite base, gold accent, real chip-tier colors */
-    --bg:#121309; --panel:#1a1c11; --panel2:#212416; --sidebar:#0e0f08; --border:#2e3120;
-    --text:#eee9db; --muted:#8d8a72; --accent:#c9a15c; --accent-dim:rgba(201,161,92,.15);
-    --green:#5fb88a; --red:#c1554a; --amber:#d4af37;
-    --yatirimsiz:#8d8a72; --yatirimli:#6c93d6; --vip:#d4af37; --terfi:#dd9a4d; --pasif:#c1554a;
-    --bronz:#b87333; --gumus:#b9bec7; --altin:#d4af37; --platin:#8fc4d6; --elmas:#7fd6ee;
+    --bg:#111827; --panel:#1F2937; --panel2:#374151; --sidebar:#0d1420; --border:#4B5563;
+    --text:#F9FAFB; --muted:#9CA3AF; --accent:#2563EB; --accent-dim:rgba(37,99,235,.18);
+    --green:#22C55E; --red:#EF4444; --amber:#F59E0B;
+    --yatirimsiz:#9CA3AF; --yatirimli:#2563EB; --vip:#F59E0B; --terfi:#F59E0B; --pasif:#EF4444;
+    --bronz:#b87333; --gumus:#b9bec7; --altin:#F59E0B; --platin:#8fc4d6; --elmas:#7fd6ee;
     --font-display:'Space Grotesk',sans-serif; --font-body:'Inter',-apple-system,Segoe UI,Arial,sans-serif; --font-mono:'JetBrains Mono',monospace;
   }
   [data-theme="light"]{
-    --bg:#f6f2e7; --panel:#fffdf8; --panel2:#efe8d6; --sidebar:#efe7d3; --border:#ddd2b4;
-    --text:#26241a; --muted:#83795f; --accent:#a8823f; --accent-dim:rgba(168,130,63,.12);
-    --green:#2f8f63; --red:#b5453b; --amber:#a8823f;
+    --bg:#F9FAFB; --panel:#FFFFFF; --panel2:#F3F4F6; --sidebar:#F3F4F6; --border:#E5E7EB;
+    --text:#111827; --muted:#6B7280; --accent:#2563EB; --accent-dim:rgba(37,99,235,.10);
+    --green:#15803D; --red:#DC2626; --amber:#D97706;
   }
-  [data-theme="light"] .mark{color:#fffdf8;}
+  [data-theme="light"] .mark{color:#FFFFFF;}
+  [data-theme="light"] .btn{color:#FFFFFF;}
   [data-theme="light"] .status .led{box-shadow:none;}
   [data-theme="light"]{
     --bg:#f6f2e7; --panel:#fffdf8; --panel2:#efe8d6; --sidebar:#efe7d3; --border:#ddd2b4;
@@ -43,7 +43,7 @@
   .app{display:flex;min-height:100vh;}
   .sidebar{width:256px;flex-shrink:0;background:var(--sidebar);border-right:1px solid var(--border);padding:22px 0;position:sticky;top:0;height:100vh;overflow-y:auto;}
   .sidebar .brand{padding:0 20px 18px;border-bottom:1px solid var(--border);margin-bottom:14px;display:flex;align-items:center;gap:10px;}
-  .mark{border-radius:7px;background:linear-gradient(155deg,var(--accent),#8a6a2f);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;color:#14150c;}
+  .mark{border-radius:7px;background:linear-gradient(155deg,var(--accent),#1e3a8a);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;color:#F9FAFB;}
   .sidebar .brand .mark{width:30px;height:30px;font-size:14px;flex-shrink:0;}
   .sidebar .brand .t{font-family:var(--font-display);font-size:14px;font-weight:600;letter-spacing:.01em;}
   .sidebar .brand .s{font-size:11px;color:var(--muted);margin-top:1px;}
@@ -68,7 +68,7 @@
   .page.active{display:block;}
   h1.page-title{font-family:var(--font-display);font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:.01em;}
   .page-sub{color:var(--muted);font-size:12px;margin-bottom:20px;}
-  .btn{background:var(--accent);color:#14150c;border:none;padding:9px 16px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;font-family:var(--font-body);}
+  .btn{background:var(--accent);color:#F9FAFB;border:none;padding:9px 16px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;font-family:var(--font-body);}
   .btn:hover{opacity:.88;}
   .btn.secondary{background:var(--panel2);border:1px solid var(--border);color:var(--text);}
   .toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px;justify-content:space-between;}
@@ -224,7 +224,7 @@
         <div><label style="font-size:11px;color:var(--muted)">Görüntülenen tarih</label><br><select id="viewDate" onchange="onGlobalDateChange()"></select></div>
         <div><label style="font-size:11px;color:var(--muted)">Karşılaştırma</label><br><select id="compareDate" onchange="onGlobalDateChange()"></select></div>
         <button class="btn secondary" onclick="refreshData()">Yenile</button>
-        <button class="btn secondary" id="themeToggle" onclick="toggleTheme()">☀️ Gündüz</button>
+        <button class="btn secondary" id="themeToggle" onclick="toggleTheme()">☀️</button>
         <button class="btn secondary" onclick="openTopluExport()">Toplu İndir</button>
         <div class="user-pill"><span id="userEmail"></span><button class="btn secondary" style="padding:6px 12px;" onclick="handleLogout()">Çıkış</button></div>
       </div>
@@ -422,7 +422,7 @@ function initTheme(){
 function applyTheme(mode){
   document.documentElement.setAttribute('data-theme', mode);
   const btn = document.getElementById('themeToggle');
-  if(btn) btn.textContent = mode === 'dark' ? '☀️ Gündüz' : '🌙 Gece';
+  if(btn) btn.textContent = mode === 'dark' ? '☀️' : '🌙';
   localStorage.setItem(THEME_KEY, mode);
 }
 function toggleTheme(){
