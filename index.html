@@ -826,6 +826,7 @@ const TOPLU_EXPORT_DEFS = [
     const d = lastIncreaseDate(r.login, viewDate);
     return d && daysBetween(d, viewDate) >= PASIF_GUN_ESIGI;
   }},
+  {key:'temsilci-bonus', label:'Temsilci Bonusu Adayları', sheet:'Temsilci Bonusu Adaylari', color:'FF3D6B4F', filter:(r)=>isTemsilciBonusAday(r)},
 ];
 function buildExportRow(r, viewDate, segKey){
   const base = {
