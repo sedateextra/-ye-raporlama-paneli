@@ -653,6 +653,14 @@ function isTerfiYaklasan(toplam){
 function lastIncreaseDate(login, uptoDate){
   return lastFieldIncreaseDate(login, uptoDate, 'yatirim_adedi');
 }
+function lastYatirimActivityDate(login, uptoDate){
+  const hist = (historyByLogin[login]||[]).filter(h => h.tarih <= uptoDate);
+  for(let i=hist.length-1;i>0;i--){
+    if(hist[i].yatirim_adedi > hist[i-1].yatirim_adedi || hist[i].toplam_yatirim > hist[i-1].toplam_yatirim) return hist[i].tarih;
+  }
+  if(hist.length && hist[0].yatirim_adedi > 0) return hist[0].tarih;
+  return null;
+}
 function lastWithdrawalDate(login, uptoDate){
   return lastFieldIncreaseDate(login, uptoDate, 'cekim_adedi');
 }
@@ -993,14 +1001,14 @@ function getPasifCandidates(viewDate, gunFilter){
   const result = [];
   Object.keys(historyByLogin).forEach(login=>{
     const hist = historyByLogin[login];
-    const everYatirimli = hist.some(h => h.tarih <= viewDate && hasSegment(h.tarih, login, 'yatirimli'));
-    if(!everYatirimli) return;
+    const hicYatirimYapmis = hist.some(h => h.tarih <= viewDate && h.yatirim_adedi >= 1);
+    if(!hicYatirimYapmis) return;
     let asOf = null;
     for(let i=hist.length-1;i>=0;i--){
       if(hist[i].tarih <= viewDate){ asOf = hist[i]; break; }
     }
     if(!asOf) return;
-    const lastDate = lastIncreaseDate(login, viewDate);
+    const lastDate = lastYatirimActivityDate(login, viewDate);
     const gun = lastDate ? daysBetween(lastDate, viewDate) : null;
     if(gun === null) return;
     if(gunFilter !== undefined && gunFilter !== null){
