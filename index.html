@@ -400,12 +400,7 @@ async function sendUploadAlerts(dateStr){
   const prevData = prevDate ? (latestByDate[prevDate]||{}) : {};
 
   const yeniVip = Object.values(dayData).filter(r => r.toplam_yatirim >= VIP_ESIK && (!prevData[r.login] || prevData[r.login].toplam_yatirim < VIP_ESIK));
-  const yeniPasif = Object.values(dayData).filter(r=>{
-    if(!hasSegment(dateStr, r.login, 'yatirimli')) return false;
-    const d = lastIncreaseDate(r.login, dateStr);
-    const gun = d ? daysBetween(d, dateStr) : null;
-    return gun !== null && PASIF_GUN_SECENEKLERI.includes(gun);
-  });
+  const yeniPasif = getPasifCandidates(dateStr);
 
   if(yeniVip.length){
     const list = yeniVip.slice(0,6).map(r=>`${r.login} — ${fmtMoney(r.toplam_yatirim)}`).join('<br>');
@@ -975,7 +970,8 @@ async function runTopluExport(){
   const dayData = latestByDate[viewDate] || {};
   const sheetDefs = checked.map(key=>{
     const def = TOPLU_EXPORT_DEFS.find(d=>d.key===key);
-    const rows = Object.values(dayData).filter(r=>def.filter(r, viewDate)).map(r=>buildExportRow(r, viewDate, key));
+    const sourceRows = key === 'pasif' ? getPasifCandidates(viewDate) : Object.values(dayData).filter(r=>def.filter(r, viewDate));
+    const rows = sourceRows.map(r=>buildExportRow(r, viewDate, key));
     return {name: def.sheet, color: def.color, rows};
   });
   await writeStyledWorkbook(sheetDefs, `toplu_rapor_${viewDate}.xlsx`);
@@ -993,6 +989,29 @@ async function exportRows(containerId){
 }
 
 /* ================= SAYFA RENDER YÖNLENDİRME ================= */
+function getPasifCandidates(viewDate, gunFilter){
+  const result = [];
+  Object.keys(historyByLogin).forEach(login=>{
+    const hist = historyByLogin[login];
+    const everYatirimli = hist.some(h => h.tarih <= viewDate && hasSegment(h.tarih, login, 'yatirimli'));
+    if(!everYatirimli) return;
+    let asOf = null;
+    for(let i=hist.length-1;i>=0;i--){
+      if(hist[i].tarih <= viewDate){ asOf = hist[i]; break; }
+    }
+    if(!asOf) return;
+    const lastDate = lastIncreaseDate(login, viewDate);
+    const gun = lastDate ? daysBetween(lastDate, viewDate) : null;
+    if(gun === null) return;
+    if(gunFilter !== undefined && gunFilter !== null){
+      if(gun !== gunFilter) return;
+    } else if(!PASIF_GUN_SECENEKLERI.includes(gun)){
+      return;
+    }
+    result.push({...asOf, _sonYatirim:lastDate, _gunSayisi:gun});
+  });
+  return result;
+}
 function setPasifGun(g){
   pasifAktifGun = g;
   renderCurrentPage('pasif');
@@ -1057,12 +1076,8 @@ function renderCurrentPage(page){
   }
   if(page==='pasif'){
     renderPasifTabs();
-    const rows = baseRowsForDate(viewDate, r=>hasSegment(viewDate, r.login, 'yatirimli')).map(r=>{
-      const lastDate = lastIncreaseDate(r.login, viewDate);
-      const gun = lastDate ? daysBetween(lastDate, viewDate) : null;
-      return {...r, _sonYatirim:lastDate, _gunSayisi:gun};
-    }).filter(r => r._gunSayisi === pasifAktifGun);
-    renderSegmentPage('pasif', `Pasif Yatırımlı Üyeler — ${pasifAktifGun}. Gün`, `Son yatırımından bu yana tam ${pasifAktifGun} gün geçmiş üyeler (birikmez — sadece bu gün eşiğine denk gelenler)`, rows, {
+    const rows = getPasifCandidates(viewDate, pasifAktifGun);
+    renderSegmentPage('pasif', `Pasif Yatırımlı Üyeler — ${pasifAktifGun}. Gün`, `Son yatırımından bu yana tam ${pasifAktifGun} gün geçmiş üyeler (birikmez — sadece bu gün eşiğine denk gelenler; excel'den düşmüş olsalar bile en son bilinen kayıtlarına göre bulunur)`, rows, {
       targetElId: 'pasif-content',
       extraCols:[
         {label:'Kaynak', render:r=>memberSourceLabel(viewDate, r.login)},
@@ -1101,11 +1116,7 @@ function renderGenel(viewDate){
   const tierCount = Object.values(dayData).filter(r=>tierFor(r.toplam_yatirim)).length;
   const terfiCount = Object.values(dayData).filter(r=>isTerfiYaklasan(r.toplam_yatirim)).length;
   const temsilciBonusCount = Object.values(dayData).filter(r=>isTemsilciBonusAday(r)).length;
-  const pasifCount = Object.values(dayData).filter(r=>hasSegment(viewDate, r.login, 'yatirimli')).filter(r=>{
-    const d = lastIncreaseDate(r.login, viewDate);
-    const gun = d ? daysBetween(d, viewDate) : null;
-    return gun !== null && PASIF_GUN_SECENEKLERI.includes(gun);
-  }).length;
+  const pasifCount = getPasifCandidates(viewDate).length;
 
   document.getElementById('cnt-yatirimsiz').textContent = cur.yatirimsiz.c;
   document.getElementById('cnt-yatirimli').textContent = cur.yatirimli.c;
