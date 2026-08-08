@@ -252,7 +252,10 @@
       <div class="page" id="page-vip"></div>
       <div class="page" id="page-vipyakin-durum"></div>
       <div class="page" id="page-terfi"></div>
-      <div class="page" id="page-pasif"></div>
+      <div class="page" id="page-pasif">
+        <div id="pasif-tabs" style="margin-bottom:16px;"></div>
+        <div id="pasif-content"></div>
+      </div>
       <div class="page" id="page-temsilci-bonus"></div>
 
       <!-- TEMSİLCİ -->
@@ -398,9 +401,10 @@ async function sendUploadAlerts(dateStr){
 
   const yeniVip = Object.values(dayData).filter(r => r.toplam_yatirim >= VIP_ESIK && (!prevData[r.login] || prevData[r.login].toplam_yatirim < VIP_ESIK));
   const yeniPasif = Object.values(dayData).filter(r=>{
-    if(r.segment !== 'yatirimli') return false;
+    if(!hasSegment(dateStr, r.login, 'yatirimli')) return false;
     const d = lastIncreaseDate(r.login, dateStr);
-    return d && daysBetween(d, dateStr) === PASIF_GUN_ESIGI;
+    const gun = d ? daysBetween(d, dateStr) : null;
+    return gun !== null && PASIF_GUN_SECENEKLERI.includes(gun);
   });
 
   if(yeniVip.length){
@@ -544,7 +548,8 @@ const TEMSILCI_BONUS_RANGE = {min:500, max:9999.99};
 function isTemsilciBonusAday(r){
   return r.yatirim_adedi === 1 && r.toplam_yatirim >= TEMSILCI_BONUS_RANGE.min && r.toplam_yatirim <= TEMSILCI_BONUS_RANGE.max;
 }
-const PASIF_GUN_ESIGI = 5;
+const PASIF_GUN_SECENEKLERI = [5, 12, 21, 28];
+let pasifAktifGun = 5;
 const VIP_ESIK = 10000;
 
 /* ================= VERİ DURUMU ================= */
@@ -738,7 +743,7 @@ function renderSegmentPage(containerId, title, sub, rows, opts){
   opts = opts || {};
   const compareDate = document.getElementById('compareDate').value;
   const viewDate = document.getElementById('viewDate').value;
-  const el = document.getElementById('page-'+containerId);
+  const el = document.getElementById(opts.targetElId || ('page-'+containerId));
   const prev = {
     search: document.getElementById(containerId+'-search')?.value || '',
     rep: document.getElementById(containerId+'-rep')?.value || '',
@@ -802,7 +807,7 @@ function renderSegmentPage(containerId, title, sub, rows, opts){
     html += '</tbody></table></div>';
   }
   el.innerHTML = html;
-  el._exportRows = withD.map(r => {
+  window['_exportRows_'+containerId] = withD.map(r => {
     const row = {
       Temsilci:r.temsilci, Login:r.login, Telefon:r.telefon, 'Kayıt Tarihi':r.kayit_tarihi,
       'Yatırım Adedi':r.yatirim_adedi, 'Toplam Yatırım':r.toplam_yatirim,
@@ -824,7 +829,8 @@ const TOPLU_EXPORT_DEFS = [
   {key:'pasif', label:'Pasif Yatırımlı Üyeler', sheet:'Pasif Yatirimli', color:'FF8F3A30', filter:(r,viewDate)=>{
     if(!hasSegment(viewDate, r.login, 'yatirimli')) return false;
     const d = lastIncreaseDate(r.login, viewDate);
-    return d && daysBetween(d, viewDate) >= PASIF_GUN_ESIGI;
+    const gun = d ? daysBetween(d, viewDate) : null;
+    return gun !== null && PASIF_GUN_SECENEKLERI.includes(gun);
   }},
   {key:'temsilci-bonus', label:'Temsilci Bonusu Adayları', sheet:'Temsilci Bonusu Adaylari', color:'FF3D6B4F', filter:(r)=>isTemsilciBonusAday(r)},
 ];
@@ -977,8 +983,7 @@ async function runTopluExport(){
 }
 
 async function exportRows(containerId){
-  const el = document.getElementById('page-'+containerId);
-  const rows = el._exportRows || [];
+  const rows = window['_exportRows_'+containerId] || [];
   if(rows.length===0){ alert('Aktarılacak veri yok.'); return; }
   const def = TOPLU_EXPORT_DEFS.find(d=>d.key===containerId);
   await writeStyledWorkbook(
@@ -988,6 +993,18 @@ async function exportRows(containerId){
 }
 
 /* ================= SAYFA RENDER YÖNLENDİRME ================= */
+function setPasifGun(g){
+  pasifAktifGun = g;
+  renderCurrentPage('pasif');
+}
+function renderPasifTabs(){
+  const wrap = document.getElementById('pasif-tabs');
+  if(!wrap) return;
+  wrap.innerHTML = PASIF_GUN_SECENEKLERI.map(g=>{
+    const active = g === pasifAktifGun;
+    return `<button class="btn ${active?'':'secondary'}" style="margin-right:8px;" onclick="setPasifGun(${g})">${g}. Gün</button>`;
+  }).join('');
+}
 function renderCurrentPage(page){
   if(page==='planlama'){ renderPlanlamaPage(); return; }
   if(page==='raporlar'){ renderRaporlarPage(); return; }
@@ -1039,12 +1056,14 @@ function renderCurrentPage(page){
     });
   }
   if(page==='pasif'){
+    renderPasifTabs();
     const rows = baseRowsForDate(viewDate, r=>hasSegment(viewDate, r.login, 'yatirimli')).map(r=>{
       const lastDate = lastIncreaseDate(r.login, viewDate);
       const gun = lastDate ? daysBetween(lastDate, viewDate) : null;
       return {...r, _sonYatirim:lastDate, _gunSayisi:gun};
-    }).filter(r => r._gunSayisi !== null && r._gunSayisi >= PASIF_GUN_ESIGI);
-    renderSegmentPage('pasif', 'Pasif Yatırımlı Üyeler', `Son ${PASIF_GUN_ESIGI}+ gündür yeni yatırım yapmamış yatırımlı üyeler`, rows, {
+    }).filter(r => r._gunSayisi === pasifAktifGun);
+    renderSegmentPage('pasif', `Pasif Yatırımlı Üyeler — ${pasifAktifGun}. Gün`, `Son yatırımından bu yana tam ${pasifAktifGun} gün geçmiş üyeler (birikmez — sadece bu gün eşiğine denk gelenler)`, rows, {
+      targetElId: 'pasif-content',
       extraCols:[
         {label:'Kaynak', render:r=>memberSourceLabel(viewDate, r.login)},
         {label:'Son yatırım tarihi', render:r=>r._sonYatirim||'–'},
@@ -1084,7 +1103,8 @@ function renderGenel(viewDate){
   const temsilciBonusCount = Object.values(dayData).filter(r=>isTemsilciBonusAday(r)).length;
   const pasifCount = Object.values(dayData).filter(r=>hasSegment(viewDate, r.login, 'yatirimli')).filter(r=>{
     const d = lastIncreaseDate(r.login, viewDate);
-    return d && daysBetween(d, viewDate) >= PASIF_GUN_ESIGI;
+    const gun = d ? daysBetween(d, viewDate) : null;
+    return gun !== null && PASIF_GUN_SECENEKLERI.includes(gun);
   }).length;
 
   document.getElementById('cnt-yatirimsiz').textContent = cur.yatirimsiz.c;
@@ -1113,7 +1133,7 @@ function renderGenel(viewDate){
     cardHtml('vip','VIP', cur.vip.c, cur.vip.t, prev?prev.vip.c:0, prev?prev.vip.t:0, 'vip') +
     `<div class="card vipyakin" onclick="goPage('vipyakin-durum')"><div class="label">VIP statüsüne yaklaşan</div><div class="value">${fmtInt(tierCount)} üye</div><div class="sub">Bronz→Elmas eşiklerine yakın</div></div>` +
     `<div class="card terfi" onclick="goPage('terfi')"><div class="label">VIP terfiye yaklaşan</div><div class="value">${fmtInt(terfiCount)} üye</div><div class="sub">7.000₺–9.999₺ arası</div></div>` +
-    `<div class="card pasif" onclick="goPage('pasif')"><div class="label">Pasif yatırımlı</div><div class="value">${fmtInt(pasifCount)} üye</div><div class="sub">${PASIF_GUN_ESIGI}+ gündür hareketsiz</div></div>` +
+    `<div class="card pasif" onclick="goPage('pasif')"><div class="label">Pasif yatırımlı</div><div class="value">${fmtInt(pasifCount)} üye</div><div class="sub">5 / 12 / 21 / 28. gün eşiklerinde</div></div>` +
     `<div class="card terfi" onclick="goPage('temsilci-bonus')"><div class="label">Temsilci bonusu adayı</div><div class="value">${fmtInt(temsilciBonusCount)} üye</div><div class="sub">Tek yatırım, 500₺–9.999₺ arası</div></div>`;
 
   renderRepTable('genelRepTable', dayData, cmpData);
