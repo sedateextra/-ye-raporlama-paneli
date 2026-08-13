@@ -280,6 +280,8 @@
           <button class="btn" onclick="applyRaporTarih()">Uygula</button>
           <button class="btn secondary" onclick="exportRaporlar()">Excel'e Aktar</button>
         </div>
+        <div id="rapor-kaynak-tabs" style="margin:14px 0;text-align:center;"></div>
+        <div id="rapor-kaynak-tabs" style="margin:14px 0;text-align:center;"></div>
         <div id="raporlarWrap" style="margin-top:18px;"></div>
       </div>
 
@@ -1470,6 +1472,20 @@ function qualifiesFromYatirimsiz(login, uptoDate){
   const hist = (historyByLogin[login]||[]).filter(h=>h.tarih <= uptoDate);
   return hist.some(h => h.yatirim_adedi === 0 && hasSegment(h.tarih, login, 'yatirimsiz'));
 }
+let raporKaynakFiltre = 'yatirimsiz';
+function setRaporKaynak(k){
+  raporKaynakFiltre = k;
+  renderRaporlarPage();
+}
+function renderRaporKaynakTabs(){
+  const wrap = document.getElementById('rapor-kaynak-tabs');
+  if(!wrap) return;
+  const secenekler = [['yatirimsiz','Yatırımsız Gelenler'],['yatirimli','Yatırımlı Gelenler']];
+  wrap.innerHTML = secenekler.map(([k,l])=>{
+    const active = k === raporKaynakFiltre;
+    return `<button class="btn ${active?'':'secondary'}" style="margin-right:8px;" onclick="setRaporKaynak('${k}')">${l}</button>`;
+  }).join('');
+}
 function firstDepositTransition(login){
   const hist = historyByLogin[login] || [];
   for(let i=0;i<hist.length;i++){
@@ -1484,6 +1500,7 @@ function renderRaporlarPage(){
   const wrap = document.getElementById('raporlarWrap');
   const labelEl = document.getElementById('raporHaftaLabel');
   if(!wrap || !labelEl) return;
+  renderRaporKaynakTabs();
   const start = raporBaslangic;
   const end = raporBitis;
   const startKey = fmtKey(start), endKey = fmtKey(end);
@@ -1503,6 +1520,7 @@ function renderRaporlarPage(){
     if(!asOf.kayit_tarihi) return;
     if(asOf.kayit_tarihi < startKey || asOf.kayit_tarihi > endKey) return;
     if(asOf.yatirim_adedi < 1) return;
+    if(!hasSegment(asOf.tarih, login, raporKaynakFiltre)) return;
     detayRows.push({
       login, temsilci: asOf.temsilci,
       ilkYatirimTarihi: asOf.kayit_tarihi,
