@@ -270,11 +270,7 @@
       <div class="page" id="page-raporlar">
         <h1 class="page-title">Haftalık Raporlar</h1>
         <div class="page-sub">Seçili dönemde ilk kez yatırım yapan üyelerin ilk/devam yatırım performansı, temsilci bazında</div>
-        <div class="toolbar" style="justify-content:center;flex-wrap:wrap;">
-          <button class="btn secondary" onclick="changeRaporHafta(-1)">‹ 7 gün geri</button>
-          <div id="raporHaftaLabel" style="font-family:var(--font-display);font-size:18px;min-width:220px;text-align:center;"></div>
-          <button class="btn secondary" onclick="changeRaporHafta(1)">7 gün ileri ›</button>
-        </div>
+  
         <div class="toolbar" style="justify-content:center;">
           <div><label style="font-size:11px;color:var(--muted)">Başlangıç</label><br><input type="date" id="raporBaslangicInput"></div>
           <div><label style="font-size:11px;color:var(--muted)">Bitiş</label><br><input type="date" id="raporBitisInput"></div>
@@ -1541,6 +1537,71 @@ function renderRaporlarPage(){
   document.getElementById('raporBaslangicInput').value = startKey;
   document.getElementById('raporBitisInput').value = endKey;
   initRaporTarihPickers();
+
+  const detayRows = [];
+  Object.keys(historyByLogin).forEach(login=>{
+    const hist = historyByLogin[login];
+    let asOf = null;
+    for(let i=hist.length-1;i>=0;i--){
+      if(hist[i].tarih <= endKey){ asOf = hist[i]; break; }
+    }
+    if(!asOf) return;
+    if(!asOf.kayit_tarihi) return;
+    if(asOf.kayit_tarihi < startKey || asOf.kayit_tarihi > endKey) return;
+    if(asOf.yatirim_adedi < 1) return;
+    if(!hasSegment(asOf.tarih, login, raporKaynakFiltre)) return;
+    detayRows.push({
+      login, temsilci: asOf.temsilci,
+      ilkYatirimTarihi: asOf.kayit_tarihi,
+      ilkYatirimMiktari: asOf.ilk_yatirim || 0,
+      devamSayisi: Math.max(0, asOf.yatirim_adedi - 1),
+      devamMiktari: Math.max(0, asOf.toplam_yatirim - (asOf.ilk_yatirim || 0)),
+      toplamTutar: asOf.toplam_yatirim
+    });
+  });
+
+  const perTemsilci = {};
+  detayRows.forEach(r=>{
+    const k = r.temsilci || '(atanmamış)';
+    if(!perTemsilci[k]) perTemsilci[k] = {ilkSayi:0, ilkMiktar:0, devamSayi:0, devamMiktar:0, tutar:0};
+    perTemsilci[k].ilkSayi++;
+    perTemsilci[k].ilkMiktar += r.ilkYatirimMiktari;
+    perTemsilci[k].devamSayi += r.devamSayisi;
+    perTemsilci[k].devamMiktar += r.devamMiktari;
+    perTemsilci[k].tutar += r.toplamTutar;
+  });
+  const list = Object.entries(perTemsilci).sort((a,b)=>b[1].tutar-a[1].tutar);
+
+  let html = `<div class="table-wrap"><table><thead><tr><th>Temsilci</th><th>İlk Yatırım Sayısı</th><th>İlk Yatırım Miktarı</th><th>Devam Yatırım Sayısı</th><th>Devam Yatırım Miktarı</th><th>Toplam Yatırım</th></tr></thead><tbody>`;
+  if(list.length===0){
+    html += `<tr><td colspan="6" style="text-align:center;color:var(--muted);">Bu hafta için veri yok.</td></tr>`;
+  } else {
+    list.forEach(([temsilci,d])=>{
+      html += `<tr><td>${temsilci}</td><td>${fmtInt(d.ilkSayi)}</td><td>${fmtMoney(d.ilkMiktar)}</td><td>${fmtInt(d.devamSayi)}</td><td>${fmtMoney(d.devamMiktar)}</td><td>${fmtMoney(d.tutar)}</td></tr>`;
+    });
+  }
+  html += `</tbody></table></div>`;
+
+  html += `<h1 class="page-title" style="margin-top:28px;font-size:15px">Üye bazlı detay</h1>`;
+  html += `<div class="table-wrap"><table><thead><tr><th>Temsilci</th><th>Login</th><th>İlk Yatırım Tarihi</th><th>İlk Yatırım Miktarı</th><th>Devam Yatırım Sayısı</th><th>Devam Yatırım Miktarı</th><th>Toplam Yatırım</th></tr></thead><tbody>`;
+  if(detayRows.length===0){
+    html += `<tr><td colspan="7" style="text-align:center;color:var(--muted);">Kayıt yok.</td></tr>`;
+  } else {
+    detayRows.sort((a,b)=> (a.temsilci||'').localeCompare(b.temsilci||'','tr') || b.toplamTutar-a.toplamTutar);
+    detayRows.forEach(r=>{
+      html += `<tr onclick="openMemberModal('${r.login}')" style="cursor:pointer;"><td>${r.temsilci||''}</td><td>${r.login}</td><td>${r.ilkYatirimTarihi}</td><td>${fmtMoney(r.ilkYatirimMiktari)}</td><td>${fmtInt(r.devamSayisi)}</td><td>${fmtMoney(r.devamMiktari)}</td><td>${fmtMoney(r.toplamTutar)}</td></tr>`;
+    });
+  }
+  html += `</tbody></table></div>`;
+
+  wrap.innerHTML = html;
+  wrap._exportRows = detayRows.map(r=>({
+    Temsilci:r.temsilci, Login:r.login, 'İlk Yatırım Tarihi':r.ilkYatirimTarihi,
+    'İlk Yatırım Miktarı':r.ilkYatirimMiktari,
+    'Devam Yatırım Sayısı':r.devamSayisi, 'Devam Yatırım Miktarı':r.devamMiktari,
+    'Toplam Yatırım':r.toplamTutar
+  }));
+}
 
   const detayRows = [];
   Object.keys(historyByLogin).forEach(login=>{
