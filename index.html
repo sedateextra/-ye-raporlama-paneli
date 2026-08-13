@@ -1588,10 +1588,18 @@ function renderRaporlarPage(){
     'Devam Yatırım Sayısı':r.devamSayisi, 'Devam Yatırım Miktarı':r.devamMiktari,
     'Toplam Yatırım':r.toplamTutar
   }));
+  wrap._summaryRows = list.map(([temsilci,d])=>({
+    Temsilci: temsilci,
+    'İlk Yatırım Sayısı': d.ilkSayi,
+    'İlk Yatırım Miktarı': d.ilkMiktar,
+    'Devam Yatırım Sayısı': d.devamSayi,
+    'Devam Yatırım Miktarı': d.devamMiktar,
+    'Toplam Yatırım': d.tutar
+  }));
 }
 async function exportRaporlar(){
   const wrap = document.getElementById('raporlarWrap');
-  const rows = wrap._exportRows || [];
+  const rows = wrap._summaryRows || [];
   if(rows.length===0){ alert('Aktarılacak veri yok.'); return; }
   await writeStyledWorkbook([{name:'Haftalik Rapor', color:'FFC9A15C', rows}], `haftalik_rapor_${fmtKey(raporBaslangic)}_${fmtKey(raporBitis)}.xlsx`);
 }
