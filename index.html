@@ -8,8 +8,6 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -29,13 +27,6 @@
   }
   [data-theme="light"] .mark{color:#FFFFFF;}
   [data-theme="light"] .btn{color:#FFFFFF;}
-  [data-theme="light"] .status .led{box-shadow:none;}
-  [data-theme="light"]{
-    --bg:#f6f2e7; --panel:#fffdf8; --panel2:#efe8d6; --sidebar:#efe7d3; --border:#ddd2b4;
-    --text:#26241a; --muted:#83795f; --accent:#a8823f; --accent-dim:rgba(168,130,63,.12);
-    --green:#2f8f63; --red:#b5453b; --amber:#a8823f;
-  }
-  [data-theme="light"] .mark{color:#fffdf8;}
   [data-theme="light"] .status .led{box-shadow:none;}
   *{box-sizing:border-box;}
   body{margin:0;font-family:var(--font-body);background:var(--bg);color:var(--text);}
@@ -278,15 +269,7 @@
           <button class="btn secondary" onclick="exportRaporlar()">Excel'e Aktar</button>
         </div>
         <div id="rapor-kaynak-tabs" style="margin:14px 0;text-align:center;"></div>
-        <div id="rapor-kaynak-tabs" style="margin:14px 0;text-align:center;"></div>
         <div id="raporlarWrap" style="margin-top:18px;"></div>
-      </div>
-
-      <!-- ÇAĞRI -->
-      <div class="page" id="page-cagri">
-        <h1 class="page-title">Çağrı Raporları</h1>
-        <div class="page-sub">Henüz bu panele bağlanmadı</div>
-        <div class="placeholder-page">Çağrı verileri ayrı bir Supabase yapısıyla bu panele entegre edilecek — henüz kurulmadı.</div>
       </div>
 
       <!-- PLANLAMA -->
@@ -1600,65 +1583,6 @@ function renderRaporlarPage(){
     'İlk Yatırım Miktarı':r.ilkYatirimMiktari,
     'Devam Yatırım Sayısı':r.devamSayisi, 'Devam Yatırım Miktarı':r.devamMiktari,
     'Toplam Yatırım':r.toplamTutar
-  }));
-}
-
-  const detayRows = [];
-  Object.keys(historyByLogin).forEach(login=>{
-    const hist = historyByLogin[login];
-    let asOf = null;
-    for(let i=hist.length-1;i>=0;i--){
-      if(hist[i].tarih <= endKey){ asOf = hist[i]; break; }
-    }
-    if(!asOf) return;
-    if(!asOf.kayit_tarihi) return;
-    if(asOf.kayit_tarihi < startKey || asOf.kayit_tarihi > endKey) return;
-    if(asOf.yatirim_adedi < 1) return;
-    if(!hasSegment(asOf.tarih, login, raporKaynakFiltre)) return;
-    detayRows.push({
-      login, temsilci: asOf.temsilci,
-      ilkYatirimTarihi: asOf.kayit_tarihi,
-      devamSayisi: Math.max(0, asOf.yatirim_adedi - 1),
-      toplamTutar: asOf.toplam_yatirim
-    });
-  });
-
-  const perTemsilci = {};
-  detayRows.forEach(r=>{
-    const k = r.temsilci || '(atanmamış)';
-    if(!perTemsilci[k]) perTemsilci[k] = {ilk:0, devam:0, tutar:0};
-    perTemsilci[k].ilk++;
-    perTemsilci[k].devam += r.devamSayisi;
-    perTemsilci[k].tutar += r.toplamTutar;
-  });
-  const list = Object.entries(perTemsilci).sort((a,b)=>b[1].tutar-a[1].tutar);
-
-  let html = `<div class="table-wrap"><table><thead><tr><th>Temsilci</th><th>İlk Yatırım Sayısı</th><th>Devam Yatırım Sayısı</th><th>Toplam Yatırım</th></tr></thead><tbody>`;
-  if(list.length===0){
-    html += `<tr><td colspan="4" style="text-align:center;color:var(--muted);">Bu hafta için veri yok.</td></tr>`;
-  } else {
-    list.forEach(([temsilci,d])=>{
-      html += `<tr><td>${temsilci}</td><td>${fmtInt(d.ilk)}</td><td>${fmtInt(d.devam)}</td><td>${fmtMoney(d.tutar)}</td></tr>`;
-    });
-  }
-  html += `</tbody></table></div>`;
-
-  html += `<h1 class="page-title" style="margin-top:28px;font-size:15px">Üye bazlı detay</h1>`;
-  html += `<div class="table-wrap"><table><thead><tr><th>Temsilci</th><th>Login</th><th>İlk Yatırım Tarihi</th><th>Devam Yatırım Sayısı</th><th>Toplam Yatırım</th></tr></thead><tbody>`;
-  if(detayRows.length===0){
-    html += `<tr><td colspan="5" style="text-align:center;color:var(--muted);">Kayıt yok.</td></tr>`;
-  } else {
-    detayRows.sort((a,b)=> (a.temsilci||'').localeCompare(b.temsilci||'','tr') || b.toplamTutar-a.toplamTutar);
-    detayRows.forEach(r=>{
-      html += `<tr onclick="openMemberModal('${r.login}')" style="cursor:pointer;"><td>${r.temsilci||''}</td><td>${r.login}</td><td>${r.ilkYatirimTarihi}</td><td>${fmtInt(r.devamSayisi)}</td><td>${fmtMoney(r.toplamTutar)}</td></tr>`;
-    });
-  }
-  html += `</tbody></table></div>`;
-
-  wrap.innerHTML = html;
-  wrap._exportRows = detayRows.map(r=>({
-    Temsilci:r.temsilci, Login:r.login, 'İlk Yatırım Tarihi':r.ilkYatirimTarihi,
-    'Devam Yatırım Sayısı':r.devamSayisi, 'Toplam Yatırım':r.toplamTutar
   }));
 }
 async function exportRaporlar(){
