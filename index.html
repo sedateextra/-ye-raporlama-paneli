@@ -1118,18 +1118,17 @@ function renderCurrentPage(page){
     const rows = getPasifCandidates(viewDate, pasifAktifGun);
     const summaryEl = document.getElementById('pasif-summary');
     if(summaryEl){
-      const nextDate = nextDateAfter(viewDate);
-      if(!nextDate){
-        summaryEl.innerHTML = `<div style="font-size:12px;color:var(--muted);">Bir sonraki günün verisi henüz yok — oran hesaplanamıyor.</div>`;
+      const sonRaporTarihi = dateList[0];
+      if(!sonRaporTarihi || sonRaporTarihi <= viewDate){
+        summaryEl.innerHTML = `<div style="font-size:12px;color:var(--muted);">Bu tarihten sonra yüklenmiş rapor yok — oran hesaplanamıyor.</div>`;
       } else {
-        const stats = rows.map(r => checkNextDayDeposit(r.login, viewDate));
-        const degerlendirilen = stats.filter(s=>s.hasNext);
-        const yapti = degerlendirilen.filter(s=>s.yaptiMi).length;
-        const oran = degerlendirilen.length ? Math.round((yapti/degerlendirilen.length)*100) : null;
+        const stats = rows.map(r => checkGeriDonus(r.login, viewDate));
+        const yapti = stats.filter(s=>s.yaptiMi).length;
+        const oran = rows.length ? Math.round((yapti/rows.length)*100) : null;
         summaryEl.innerHTML = `<div class="card terfi" style="max-width:420px;">
-          <div class="label">Devam Yatırım Oranı — ${nextDate}</div>
+          <div class="label">Devam Yatırım Oranı — son rapora göre (${sonRaporTarihi})</div>
           <div class="value">${oran===null ? '–' : oran+'%'}</div>
-          <div class="sub">${degerlendirilen.length} üyeden ${yapti} tanesi bir sonraki gün yatırım yaptı</div>
+          <div class="sub">${rows.length} üyeden ${yapti} tanesi o tarihten bu yana yatırım yaptı</div>
         </div>`;
       }
     }
