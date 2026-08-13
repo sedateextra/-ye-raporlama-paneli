@@ -1529,10 +1529,10 @@ function renderRaporlarPage(){
       if(hist[i].tarih <= endKey){ asOf = hist[i]; break; }
     }
     if(!asOf) return;
-    if(!asOf.kayit_tarihi) return;
-    if(asOf.kayit_tarihi < startKey || asOf.kayit_tarihi > endKey) return;
+    if(asOf.tarih < startKey || asOf.tarih > endKey) return;
     if(asOf.yatirim_adedi < 1) return;
-    if(!hasSegment(asOf.tarih, login, raporKaynakFiltre)) return;
+    const kaynaktanGeldi = hist.some(h => h.tarih <= endKey && hasSegment(h.tarih, login, raporKaynakFiltre));
+    if(!kaynaktanGeldi) return;
     detayRows.push({
       login, temsilci: asOf.temsilci,
       ilkYatirimTarihi: asOf.kayit_tarihi,
