@@ -1512,7 +1512,8 @@ function renderRaporlarPage(){
   console.log('RAPORLAR-TEST-V2 çalıştı');
   const wrap = document.getElementById('raporlarWrap');
   const labelEl = document.getElementById('raporHaftaLabel');
-  if(!wrap || !labelEl) return;
+  console.log('wrap:', wrap, 'labelEl:', labelEl);
+  if(!wrap || !labelEl){ console.log('ERKEN ÇIKIŞ - wrap ya da labelEl bulunamadı'); return; }
   renderRaporKaynakTabs();
   const start = raporBaslangic;
   const end = raporBitis;
@@ -1578,6 +1579,7 @@ function renderRaporlarPage(){
   }
   html += `</tbody></table></div>`;
 
+  console.log('detayRows:', detayRows.length, 'html uzunluk:', html.length);
   wrap.innerHTML = html;
   wrap._exportRows = detayRows.map(r=>({
     Temsilci:r.temsilci, Login:r.login, 'İlk Yatırım Tarihi':r.ilkYatirimTarihi,
