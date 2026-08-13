@@ -873,7 +873,7 @@ function colLetter(n){
 }
 async function writeStyledWorkbook(sheetDefs, filename){
   const wb = new ExcelJS.Workbook();
-  const MONEY_COLS = ['Toplam Yatırım', 'Toplam Çekim', 'İlk Çekim'];
+  const MONEY_COLS = ['Toplam Yatırım', 'Toplam Çekim', 'İlk Çekim', 'İlk Yatırım Miktarı', 'Devam Yatırım Miktarı'];
   sheetDefs.forEach(({name, color, rows}) => {
     let data = rows.length ? rows.slice() : [{Bilgi:'Bu listede üye yok'}];
     if(rows.length){
