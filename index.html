@@ -604,6 +604,17 @@ function hasSegment(tarih, login, segment){
   return !!(segmentsByDate[tarih] && segmentsByDate[tarih][login] && segmentsByDate[tarih][login].has(segment));
 }
 const SOURCE_LABEL = {yatirimsiz:'Yatırımsız Gelenler', yatirimli:'Yatırımlı Gelenler', vip:'VIP', vipyakin:"VIP'ye Yakın"};
+function memberSourceLabelHistoric(login, uptoDate){
+  const segsUnion = new Set();
+  Object.keys(segmentsByDate).forEach(tarih=>{
+    if(tarih > uptoDate) return;
+    if(segmentsByDate[tarih][login]){
+      segmentsByDate[tarih][login].forEach(s=>segsUnion.add(s));
+    }
+  });
+  if(segsUnion.size===0) return '–';
+  return [...segsUnion].map(s=>SOURCE_LABEL[s]||s).join(', ');
+}
 function memberSourceLabel(tarih, login){
   const segs = segmentsByDate[tarih] && segmentsByDate[tarih][login];
   if(!segs || segs.size===0) return '–';
@@ -1065,16 +1076,22 @@ async function exportKombine(temsilci){
   if(vipRows.length===0 && pasifRows.length===0){ alert('Aktarılacak veri yok.'); return; }
   const vipExportRows = vipRows.map(r => ({
     Temsilci: r.temsilci, Login: r.login, Telefon: r.telefon, 'Kayıt Tarihi': r.kayit_tarihi,
-    'Yatırım Adedi': r.yatirim_adedi, 'Toplam Yatırım': r.toplam_yatirim,
+    'Yatırım Adedi': r.yatirim_adedi, 'Toplam Yatırım': r.toplam_yatirim, 'İlk Yatırım': r.ilk_yatirim,
     'Çekim Adedi': r.cekim_adedi, 'Toplam Çekim': r.toplam_cekim, 'İlk Çekim': r.ilk_cekim,
+    'Son Yatırım Tarihi': lastIncreaseDate(r.login, viewDate)||'',
     'Son Çekim Tarihi': lastWithdrawalDate(r.login, viewDate)||'',
     'VIP Kontrol': r.vip_kontrol||'', 'Hediye Hakkı': r.hediye_hakki||'',
-    'Kaynak': memberSourceLabel(viewDate, r.login)
+    'Kaynak': memberSourceLabelHistoric(r.login, viewDate)
   }));
   const pasifExportRows = pasifRows.map(r => ({
     Temsilci: r.temsilci, Login: r.login, Telefon: r.telefon, 'Kayıt Tarihi': r.kayit_tarihi,
-    'Toplam Yatırım': r.toplam_yatirim, 'Son Yatırım Tarihi': r._sonYatirim || '',
-    'Eşik': r._gunSayisi + '. Gün'
+    'Yatırım Adedi': r.yatirim_adedi, 'Toplam Yatırım': r.toplam_yatirim,
+    'Çekim Adedi': r.cekim_adedi, 'Toplam Çekim': r.toplam_cekim, 'İlk Çekim': r.ilk_cekim,
+    'İlk Yatırım': r.ilk_yatirim, 'Son Yatırım Tarihi': r._sonYatirim || '',
+    'Son Çekim Tarihi': lastWithdrawalDate(r.login, viewDate) || '',
+    'Kaç Gündür Pasif': r._gunSayisi + ' gün',
+    'VIP Kontrol': r.vip_kontrol||'', 'Hediye Hakkı': r.hediye_hakki||'',
+    'Kaynak': memberSourceLabelHistoric(r.login, viewDate)
   }));
   const filename = temsilci ? `yeni_vip_ve_pasif_${temsilci}_${viewDate}.xlsx` : `yeni_vip_ve_pasif_tumu_${viewDate}.xlsx`;
   await writeStyledWorkbook([
@@ -1283,7 +1300,7 @@ function renderCurrentPage(page){
     renderSegmentPage('pasif', `Pasif Yatırımlı Üyeler — ${pasifAktifGun}. Gün`, `Son yatırımından bu yana tam ${pasifAktifGun} gün geçmiş üyeler (birikmez — sadece bu gün eşiğine denk gelenler; excel'den düşmüş olsalar bile en son bilinen kayıtlarına göre bulunur)`, rows, {
       targetElId: 'pasif-content',
       extraCols:[
-        {label:'Kaynak', render:r=>memberSourceLabel(viewDate, r.login)},
+        {label:'Kaynak', render:r=>memberSourceLabelHistoric(r.login, viewDate)},
         {label:'Son yatırım tarihi', render:r=>r._sonYatirim||'–'},
         {label:'Kaç gündür pasif', render:r=>r._gunSayisi+' gün'},
         {label:'Takip Durumu', render:r=>{
