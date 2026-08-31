@@ -1095,7 +1095,10 @@ function renderYeniVipView(viewDate){
   const temsilciler = Object.keys(grouped).sort((a,b)=>a.localeCompare(b,'tr'));
 
   let html = `<h1 class="page-title">Yeni VIP Üyeler</h1><div class="page-sub">Bir önceki rapora göre 10.000₺ eşiğini yeni geçen üyeler, temsilciye göre gruplu · ${rows.length} üye</div>`;
-  html += `<div class="toolbar" style="justify-content:flex-end;"><button class="btn" onclick="exportYeniVip(null)">Hepsini İndir</button></div>`;
+  html += `<div class="toolbar" style="justify-content:flex-end;">
+    <button class="btn secondary" onclick="exportYeniVip(null)">Hepsini İndir</button>
+    <button class="btn" onclick="exportKombine(null)">Tümü Kombine İndir (VIP+Pasif)</button>
+  </div>`;
 
   if(temsilciler.length===0){
     html += '<div class="empty">Bu tarih için yeni VIP üye yok.</div>';
@@ -1155,7 +1158,10 @@ function renderPasifTumuView(viewDate){
   const temsilciler = Object.keys(grouped).sort((a,b)=>a.localeCompare(b,'tr'));
 
   let html = `<h1 class="page-title">Pasif Yatırımlı Üyeler — Tümü</h1><div class="page-sub">5/12/21/28. gün eşiklerindeki tüm üyeler, temsilciye göre gruplu · ${rows.length} üye</div>`;
-  html += `<div class="toolbar" style="justify-content:flex-end;"><button class="btn" onclick="exportPasifTumu(null)">Hepsini İndir</button></div>`;
+  html += `<div class="toolbar" style="justify-content:flex-end;">
+    <button class="btn secondary" onclick="exportPasifTumu(null)">Hepsini İndir</button>
+    <button class="btn" onclick="exportKombine(null)">Tümü Kombine İndir (VIP+Pasif)</button>
+  </div>`;
 
   if(temsilciler.length===0){
     html += '<div class="empty">Bu tarih için pasif üye yok.</div>';
