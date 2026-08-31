@@ -190,7 +190,6 @@
       <div class="navitem" data-page="terfi" onclick="goPage('terfi')">VIP Terfiye Yaklaşan Üyeler <span class="count" id="cnt-terfi"></span></div>
       <div class="navitem" data-page="yeni-vip" onclick="goPage('yeni-vip')">Yeni VIP Üyeler <span class="count" id="cnt-yeni-vip"></span></div>
       <div class="navitem" data-page="pasif" onclick="goPage('pasif')">Pasif Yatırımlı Üyeler <span class="count" id="cnt-pasif"></span></div>
-      <div class="navitem" data-page="temsilci-bonus" onclick="goPage('temsilci-bonus')">Temsilci Bonusu Adayları <span class="count" id="cnt-temsilci-bonus"></span></div>
     </div>
     <div class="navgroup">
       <div class="glabel">Ekipler</div>
@@ -250,7 +249,6 @@
         <div id="pasif-summary" style="margin-bottom:16px;"></div>
         <div id="pasif-content"></div>
       </div>
-      <div class="page" id="page-temsilci-bonus"></div>
 
       <!-- TEMSİLCİ -->
       <div class="page" id="page-temsilci">
@@ -524,9 +522,6 @@ const VIP_TIERS = [
   {name:'Elmas', slug:'elmas', min:1996500, max:1999999.99, hedef:2000000},
 ];
 const TERFI_RANGE = {min:7000, max:9999.99, hedef:10000};
-const TEMSILCI_BONUS_RANGE = {min:500, max:9999.99};
-function isTemsilciBonusAday(r){
-  return r.yatirim_adedi === 1 && r.toplam_yatirim >= TEMSILCI_BONUS_RANGE.min && r.toplam_yatirim <= TEMSILCI_BONUS_RANGE.max;
 }
 const PASIF_GUN_SECENEKLERI = [5, 12, 21, 28];
 let pasifAktifGun = 5;
@@ -820,15 +815,13 @@ const TOPLU_EXPORT_DEFS = [
     const gun = d ? daysBetween(d, viewDate) : null;
     return gun !== null && PASIF_GUN_SECENEKLERI.includes(gun);
   }},
-  {key:'temsilci-bonus', label:'Temsilci Bonusu Adayları', sheet:'Temsilci Bonusu Adaylari', color:'FF3D6B4F', filter:(r)=>isTemsilciBonusAday(r)},
 ];
 function buildExportRow(r, viewDate, segKey){
   const base = {
     Temsilci:r.temsilci, Login:r.login, Telefon:r.telefon, 'Kayıt Tarihi':r.kayit_tarihi,
     'Yatırım Adedi':r.yatirim_adedi, 'Toplam Yatırım':r.toplam_yatirim,
     'Çekim Adedi':r.cekim_adedi, 'Toplam Çekim':r.toplam_cekim,
-    'İlk Çekim':r.ilk_cekim, 'Son Çekim Tarihi': lastWithdrawalDate(r.login, viewDate) || '',
-    'Oynadığı Oyunlar': r.oyunlar || ''
+    'İlk Çekim':r.ilk_cekim, 'Son Çekim Tarihi': lastWithdrawalDate(r.login, viewDate) || ''
   };
   if(segKey==='vip'){
     base['VIP Kontrol'] = r.login; base['Hediye Hakkı'] = r.hediye_hakki||'';
@@ -1011,6 +1004,8 @@ function checkGeriDonus(login, flaggedDate){
   return {yaptiMi:false, tarih:null, fark:0};
 }
 function getPasifCandidates(viewDate, gunFilter){
+  const idx = dateList.indexOf(viewDate);
+  const prevUploadedDate = idx >= 0 ? dateList[idx+1] : null;
   const result = [];
   Object.keys(historyByLogin).forEach(login=>{
     const hist = historyByLogin[login];
@@ -1024,10 +1019,19 @@ function getPasifCandidates(viewDate, gunFilter){
     const lastDate = lastYatirimActivityDate(login, viewDate);
     const gun = lastDate ? daysBetween(lastDate, viewDate) : null;
     if(gun === null) return;
-    if(gunFilter !== undefined && gunFilter !== null){
-      if(gun !== gunFilter) return;
-    } else if(!PASIF_GUN_SECENEKLERI.includes(gun)){
-      return;
+
+    let prevGun = null;
+    if(prevUploadedDate){
+      const prevLastDate = lastYatirimActivityDate(login, prevUploadedDate);
+      prevGun = prevLastDate ? daysBetween(prevLastDate, prevUploadedDate) : null;
+    }
+    const yeniGecti = (esik) => gun >= esik && !(prevGun !== null && prevGun >= esik);
+
+    if(gunFilter !== undefined && gunFilter !== null && gunFilter !== 'tumu'){
+      if(!yeniGecti(gunFilter)) return;
+    } else {
+      const gecilenEsik = PASIF_GUN_SECENEKLERI.find(esik => yeniGecti(esik));
+      if(!gecilenEsik) return;
     }
     result.push({...asOf, _sonYatirim:lastDate, _gunSayisi:gun});
   });
@@ -1081,9 +1085,13 @@ function renderYeniVipView(viewDate){
           <h3 style="font-family:var(--font-display);font-size:15px;margin:0;">${t} <span style="color:var(--muted);font-weight:400;font-size:13px;">(${list.length} üye)</span></h3>
           <button class="btn secondary" onclick="exportYeniVip('${safeT}')">Excel İndir</button>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Login</th><th>Telefon</th><th>Toplam yatırım</th><th>Kaynak</th></tr></thead><tbody>
+        <div class="table-wrap"><table><thead><tr><th>Login</th><th>Telefon</th><th>Kayıt</th><th>Yat. adedi</th><th>Toplam yatırım</th><th>Çekim adedi</th><th>Toplam çekim</th><th>İlk çekim</th><th>Son çekim tarihi</th><th>VIP Kontrol</th><th>Hediye Hakkı</th><th>Kaynak</th></tr></thead><tbody>
           ${list.map(r=>`<tr onclick="openMemberModal('${r.login}')" style="cursor:pointer;">
-            <td>${r.login}</td><td>${r.telefon||''}</td><td>${fmtMoney(r.toplam_yatirim)}</td>
+            <td>${r.login}</td><td>${r.telefon||''}</td><td>${r.kayit_tarihi||''}</td>
+            <td>${fmtInt(r.yatirim_adedi)}</td><td>${fmtMoney(r.toplam_yatirim)}</td>
+            <td>${fmtInt(r.cekim_adedi)}</td><td>${fmtMoney(r.toplam_cekim)}</td>
+            <td>${fmtMoney(r.ilk_cekim)}</td><td>${lastWithdrawalDate(r.login, viewDate)||'–'}</td>
+            <td>${r.vip_kontrol||''}</td><td>${r.hediye_hakki||''}</td>
             <td>${memberSourceLabel(viewDate, r.login)}</td>
           </tr>`).join('')}
         </tbody></table></div>
@@ -1099,7 +1107,11 @@ async function exportYeniVip(temsilci){
   const viewDate = document.getElementById('viewDate').value;
   const exportRows = rows.map(r => ({
     Temsilci: r.temsilci, Login: r.login, Telefon: r.telefon, 'Kayıt Tarihi': r.kayit_tarihi,
-    'Toplam Yatırım': r.toplam_yatirim, 'Kaynak': memberSourceLabel(viewDate, r.login)
+    'Yatırım Adedi': r.yatirim_adedi, 'Toplam Yatırım': r.toplam_yatirim,
+    'Çekim Adedi': r.cekim_adedi, 'Toplam Çekim': r.toplam_cekim, 'İlk Çekim': r.ilk_cekim,
+    'Son Çekim Tarihi': lastWithdrawalDate(r.login, viewDate)||'',
+    'VIP Kontrol': r.vip_kontrol||'', 'Hediye Hakkı': r.hediye_hakki||'',
+    'Kaynak': memberSourceLabel(viewDate, r.login)
   }));
   const filename = temsilci ? `yeni_vip_${temsilci}_${viewDate}.xlsx` : `yeni_vip_tumu_${viewDate}.xlsx`;
   await writeStyledWorkbook([{name:'Yeni VIP', color:'FF9C7A1E', rows: exportRows}], filename);
@@ -1249,14 +1261,6 @@ function renderCurrentPage(page){
       ]
     });
   }
-  if(page==='temsilci-bonus'){
-    const rows = baseRowsForDate(viewDate, r=>isTemsilciBonusAday(r));
-    renderSegmentPage('temsilci-bonus', 'Temsilci Bonusu Adayları', 'Sadece 1 yatırımı olan, 500₺–9.999₺ arası toplam yatırımlı üyeler', rows, {
-      extraCols:[
-        {label:'Kaynak', render:r=>memberSourceLabel(viewDate, r.login)}
-      ]
-    });
-  }
 }
 
 /* ================= GENEL BAKIŞ ================= */
@@ -1278,7 +1282,6 @@ function renderGenel(viewDate){
 
   const tierCount = Object.values(dayData).filter(r=>tierFor(r.toplam_yatirim)).length;
   const terfiCount = Object.values(dayData).filter(r=>isTerfiYaklasan(r.toplam_yatirim)).length;
-  const temsilciBonusCount = Object.values(dayData).filter(r=>isTemsilciBonusAday(r)).length;
   const pasifCount = getPasifCandidates(viewDate).length;
 
   document.getElementById('cnt-yatirimsiz').textContent = cur.yatirimsiz.c;
@@ -1287,7 +1290,6 @@ function renderGenel(viewDate){
   document.getElementById('cnt-vipyakin-durum').textContent = tierCount;
   document.getElementById('cnt-terfi').textContent = terfiCount;
   document.getElementById('cnt-pasif').textContent = pasifCount;
-  document.getElementById('cnt-temsilci-bonus').textContent = temsilciBonusCount;
 
   const cardsWrap = document.getElementById('genelCards');
   function cardHtml(seg, label, c, t, prevC, prevT, page){
@@ -1308,7 +1310,7 @@ function renderGenel(viewDate){
     `<div class="card vipyakin" onclick="goPage('vipyakin-durum')"><div class="label">VIP statüsüne yaklaşan</div><div class="value">${fmtInt(tierCount)} üye</div><div class="sub">Bronz→Elmas eşiklerine yakın</div></div>` +
     `<div class="card terfi" onclick="goPage('terfi')"><div class="label">VIP terfiye yaklaşan</div><div class="value">${fmtInt(terfiCount)} üye</div><div class="sub">7.000₺–9.999₺ arası</div></div>` +
     `<div class="card pasif" onclick="goPage('pasif')"><div class="label">Pasif yatırımlı</div><div class="value">${fmtInt(pasifCount)} üye</div><div class="sub">5 / 12 / 21 / 28. gün eşiklerinde</div></div>` +
-    `<div class="card terfi" onclick="goPage('temsilci-bonus')"><div class="label">Temsilci bonusu adayı</div><div class="value">${fmtInt(temsilciBonusCount)} üye</div><div class="sub">Tek yatırım, 500₺–9.999₺ arası</div></div>`;
+    ``;
 
   renderRepTable('genelRepTable', dayData, cmpData);
   renderTrendChart();
@@ -1418,7 +1420,6 @@ function openMemberModal(login){
         <td>${fmtInt(h.cekim_adedi)}</td><td>${fmtMoney(h.toplam_cekim)}</td>
       </tr>`).join('')}</tbody>
     </table></div>
-    ${latest.oyunlar ? `<div style="margin-top:14px;font-size:12px;color:var(--muted)">Oynadığı oyunlar</div><div style="font-size:13px;margin-top:4px">${latest.oyunlar}</div>` : ''}
   `;
   document.getElementById('modalBg').classList.add('open');
   renderMemberSparkline(history);
@@ -1492,8 +1493,7 @@ async function handleUpload(){
         toplam_cekim: toNum(r['Toplam Çekim (₺)']),
         ilk_cekim: toNum(r['İlk Çekim (₺)']),
         vip_kontrol: String(r['VIP KONTROL']||''),
-        hediye_hakki: String(r['HEDİYE HAKKI DURUM']||''),
-        oyunlar: String(r['Detay']||'')
+        hediye_hakki: String(r['HEDİYE HAKKI DURUM']||'')
       });
     });
     sheetCounts[name] = count;
