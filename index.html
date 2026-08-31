@@ -1058,6 +1058,30 @@ function getYeniVipCandidates(viewDate){
   const prevData = prevDate ? (latestByDate[prevDate]||{}) : {};
   return Object.values(dayData).filter(r => r.toplam_yatirim >= VIP_ESIK && (!prevData[r.login] || prevData[r.login].toplam_yatirim < VIP_ESIK));
 }
+async function exportKombine(temsilci){
+  const viewDate = document.getElementById('viewDate').value;
+  const vipRows = getYeniVipCandidates(viewDate).filter(r => !temsilci || r.temsilci === temsilci);
+  const pasifRows = getPasifCandidates(viewDate).filter(r => !temsilci || r.temsilci === temsilci);
+  if(vipRows.length===0 && pasifRows.length===0){ alert('Aktarılacak veri yok.'); return; }
+  const vipExportRows = vipRows.map(r => ({
+    Temsilci: r.temsilci, Login: r.login, Telefon: r.telefon, 'Kayıt Tarihi': r.kayit_tarihi,
+    'Yatırım Adedi': r.yatirim_adedi, 'Toplam Yatırım': r.toplam_yatirim,
+    'Çekim Adedi': r.cekim_adedi, 'Toplam Çekim': r.toplam_cekim, 'İlk Çekim': r.ilk_cekim,
+    'Son Çekim Tarihi': lastWithdrawalDate(r.login, viewDate)||'',
+    'VIP Kontrol': r.vip_kontrol||'', 'Hediye Hakkı': r.hediye_hakki||'',
+    'Kaynak': memberSourceLabel(viewDate, r.login)
+  }));
+  const pasifExportRows = pasifRows.map(r => ({
+    Temsilci: r.temsilci, Login: r.login, Telefon: r.telefon, 'Kayıt Tarihi': r.kayit_tarihi,
+    'Toplam Yatırım': r.toplam_yatirim, 'Son Yatırım Tarihi': r._sonYatirim || '',
+    'Eşik': r._gunSayisi + '. Gün'
+  }));
+  const filename = temsilci ? `yeni_vip_ve_pasif_${temsilci}_${viewDate}.xlsx` : `yeni_vip_ve_pasif_tumu_${viewDate}.xlsx`;
+  await writeStyledWorkbook([
+    {name:'Yeni VIP', color:'FF9C7A1E', rows: vipExportRows},
+    {name:'Pasif Yatirimli', color:'FF8F3A30', rows: pasifExportRows}
+  ], filename);
+}
 function renderYeniVipView(viewDate){
   const content = document.getElementById('page-yeni-vip');
   if(!content) return;
@@ -1082,7 +1106,10 @@ function renderYeniVipView(viewDate){
       html += `<div style="margin-top:22px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
           <h3 style="font-family:var(--font-display);font-size:15px;margin:0;">${t} <span style="color:var(--muted);font-weight:400;font-size:13px;">(${list.length} üye)</span></h3>
-          <button class="btn secondary" onclick="exportYeniVip('${safeT}')">Excel İndir</button>
+          <div>
+            <button class="btn secondary" onclick="exportYeniVip('${safeT}')">Excel İndir</button>
+            <button class="btn secondary" onclick="exportKombine('${safeT}')">Kombine İndir (VIP+Pasif)</button>
+          </div>
         </div>
         <div class="table-wrap"><table><thead><tr><th>Login</th><th>Telefon</th><th>Kayıt</th><th>Yat. adedi</th><th>Toplam yatırım</th><th>Çekim adedi</th><th>Toplam çekim</th><th>İlk çekim</th><th>Son çekim tarihi</th><th>VIP Kontrol</th><th>Hediye Hakkı</th><th>Kaynak</th></tr></thead><tbody>
           ${list.map(r=>`<tr onclick="openMemberModal('${r.login}')" style="cursor:pointer;">
@@ -1139,7 +1166,10 @@ function renderPasifTumuView(viewDate){
       html += `<div style="margin-top:22px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
           <h3 style="font-family:var(--font-display);font-size:15px;margin:0;">${t} <span style="color:var(--muted);font-weight:400;font-size:13px;">(${list.length} üye)</span></h3>
-          <button class="btn secondary" onclick="exportPasifTumu('${safeT}')">Excel İndir</button>
+          <div>
+            <button class="btn secondary" onclick="exportPasifTumu('${safeT}')">Excel İndir</button>
+            <button class="btn secondary" onclick="exportKombine('${safeT}')">Kombine İndir (VIP+Pasif)</button>
+          </div>
         </div>
         <div class="table-wrap"><table><thead><tr><th>Login</th><th>Telefon</th><th>Toplam yatırım</th><th>Son yatırım tarihi</th><th>Eşik</th></tr></thead><tbody>
           ${list.map(r=>`<tr onclick="openMemberModal('${r.login}')" style="cursor:pointer;">
