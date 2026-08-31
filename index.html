@@ -188,6 +188,7 @@
       <div class="navitem" data-page="vip" onclick="goPage('vip')">VIP Üyeler <span class="count" id="cnt-vip"></span></div>
       <div class="navitem" data-page="vipyakin-durum" onclick="goPage('vipyakin-durum')">VIP Statüsüne Yaklaşan Üyeler <span class="count" id="cnt-vipyakin-durum"></span></div>
       <div class="navitem" data-page="terfi" onclick="goPage('terfi')">VIP Terfiye Yaklaşan Üyeler <span class="count" id="cnt-terfi"></span></div>
+      <div class="navitem" data-page="yeni-vip" onclick="goPage('yeni-vip')">Yeni VIP Üyeler <span class="count" id="cnt-yeni-vip"></span></div>
       <div class="navitem" data-page="pasif" onclick="goPage('pasif')">Pasif Yatırımlı Üyeler <span class="count" id="cnt-pasif"></span></div>
       <div class="navitem" data-page="temsilci-bonus" onclick="goPage('temsilci-bonus')">Temsilci Bonusu Adayları <span class="count" id="cnt-temsilci-bonus"></span></div>
     </div>
@@ -243,6 +244,7 @@
       <div class="page" id="page-vip"></div>
       <div class="page" id="page-vipyakin-durum"></div>
       <div class="page" id="page-terfi"></div>
+      <div class="page" id="page-yeni-vip"></div>
       <div class="page" id="page-pasif">
         <div id="pasif-tabs" style="margin-bottom:16px;"></div>
         <div id="pasif-summary" style="margin-bottom:16px;"></div>
@@ -1038,10 +1040,119 @@ function setPasifGun(g){
 function renderPasifTabs(){
   const wrap = document.getElementById('pasif-tabs');
   if(!wrap) return;
-  wrap.innerHTML = PASIF_GUN_SECENEKLERI.map(g=>{
+  let html = PASIF_GUN_SECENEKLERI.map(g=>{
     const active = g === pasifAktifGun;
     return `<button class="btn ${active?'':'secondary'}" style="margin-right:8px;" onclick="setPasifGun(${g})">${g}. Gün</button>`;
   }).join('');
+  const tumuActive = pasifAktifGun === 'tumu';
+  html += `<button class="btn ${tumuActive?'':'secondary'}" onclick="setPasifGun('tumu')">Tümü</button>`;
+  wrap.innerHTML = html;
+}
+function getYeniVipCandidates(viewDate){
+  const idx = dateList.indexOf(viewDate);
+  const prevDate = idx >= 0 ? dateList[idx+1] : null;
+  const dayData = latestByDate[viewDate] || {};
+  const prevData = prevDate ? (latestByDate[prevDate]||{}) : {};
+  return Object.values(dayData).filter(r => r.toplam_yatirim >= VIP_ESIK && (!prevData[r.login] || prevData[r.login].toplam_yatirim < VIP_ESIK));
+}
+function renderYeniVipView(viewDate){
+  const content = document.getElementById('page-yeni-vip');
+  if(!content) return;
+  const rows = getYeniVipCandidates(viewDate);
+  const grouped = {};
+  rows.forEach(r=>{
+    const k = r.temsilci || '(atanmamış)';
+    if(!grouped[k]) grouped[k] = [];
+    grouped[k].push(r);
+  });
+  const temsilciler = Object.keys(grouped).sort((a,b)=>a.localeCompare(b,'tr'));
+
+  let html = `<h1 class="page-title">Yeni VIP Üyeler</h1><div class="page-sub">Bir önceki rapora göre 10.000₺ eşiğini yeni geçen üyeler, temsilciye göre gruplu · ${rows.length} üye</div>`;
+  html += `<div class="toolbar" style="justify-content:flex-end;"><button class="btn" onclick="exportYeniVip(null)">Hepsini İndir</button></div>`;
+
+  if(temsilciler.length===0){
+    html += '<div class="empty">Bu tarih için yeni VIP üye yok.</div>';
+  } else {
+    temsilciler.forEach(t=>{
+      const list = grouped[t].slice().sort((a,b)=>b.toplam_yatirim-a.toplam_yatirim);
+      const safeT = t.replace(/'/g,"\\'");
+      html += `<div style="margin-top:22px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <h3 style="font-family:var(--font-display);font-size:15px;margin:0;">${t} <span style="color:var(--muted);font-weight:400;font-size:13px;">(${list.length} üye)</span></h3>
+          <button class="btn secondary" onclick="exportYeniVip('${safeT}')">Excel İndir</button>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Login</th><th>Telefon</th><th>Toplam yatırım</th><th>Kaynak</th></tr></thead><tbody>
+          ${list.map(r=>`<tr onclick="openMemberModal('${r.login}')" style="cursor:pointer;">
+            <td>${r.login}</td><td>${r.telefon||''}</td><td>${fmtMoney(r.toplam_yatirim)}</td>
+            <td>${memberSourceLabel(viewDate, r.login)}</td>
+          </tr>`).join('')}
+        </tbody></table></div>
+      </div>`;
+    });
+  }
+  content.innerHTML = html;
+  window._yeniVipRows = rows;
+}
+async function exportYeniVip(temsilci){
+  const rows = (window._yeniVipRows || []).filter(r => !temsilci || r.temsilci === temsilci);
+  if(rows.length===0){ alert('Aktarılacak veri yok.'); return; }
+  const viewDate = document.getElementById('viewDate').value;
+  const exportRows = rows.map(r => ({
+    Temsilci: r.temsilci, Login: r.login, Telefon: r.telefon, 'Kayıt Tarihi': r.kayit_tarihi,
+    'Toplam Yatırım': r.toplam_yatirim, 'Kaynak': memberSourceLabel(viewDate, r.login)
+  }));
+  const filename = temsilci ? `yeni_vip_${temsilci}_${viewDate}.xlsx` : `yeni_vip_tumu_${viewDate}.xlsx`;
+  await writeStyledWorkbook([{name:'Yeni VIP', color:'FF9C7A1E', rows: exportRows}], filename);
+}
+function renderPasifTumuView(viewDate){
+  const content = document.getElementById('pasif-content');
+  if(!content) return;
+  const rows = getPasifCandidates(viewDate);
+  const grouped = {};
+  rows.forEach(r=>{
+    const k = r.temsilci || '(atanmamış)';
+    if(!grouped[k]) grouped[k] = [];
+    grouped[k].push(r);
+  });
+  const temsilciler = Object.keys(grouped).sort((a,b)=>a.localeCompare(b,'tr'));
+
+  let html = `<h1 class="page-title">Pasif Yatırımlı Üyeler — Tümü</h1><div class="page-sub">5/12/21/28. gün eşiklerindeki tüm üyeler, temsilciye göre gruplu · ${rows.length} üye</div>`;
+  html += `<div class="toolbar" style="justify-content:flex-end;"><button class="btn" onclick="exportPasifTumu(null)">Hepsini İndir</button></div>`;
+
+  if(temsilciler.length===0){
+    html += '<div class="empty">Bu tarih için pasif üye yok.</div>';
+  } else {
+    temsilciler.forEach(t=>{
+      const list = grouped[t].slice().sort((a,b)=>a._gunSayisi-b._gunSayisi);
+      const safeT = t.replace(/'/g,"\\'");
+      html += `<div style="margin-top:22px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <h3 style="font-family:var(--font-display);font-size:15px;margin:0;">${t} <span style="color:var(--muted);font-weight:400;font-size:13px;">(${list.length} üye)</span></h3>
+          <button class="btn secondary" onclick="exportPasifTumu('${safeT}')">Excel İndir</button>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Login</th><th>Telefon</th><th>Toplam yatırım</th><th>Son yatırım tarihi</th><th>Eşik</th></tr></thead><tbody>
+          ${list.map(r=>`<tr onclick="openMemberModal('${r.login}')" style="cursor:pointer;">
+            <td>${r.login}</td><td>${r.telefon||''}</td><td>${fmtMoney(r.toplam_yatirim)}</td>
+            <td>${r._sonYatirim||'–'}</td><td>${r._gunSayisi}. Gün</td>
+          </tr>`).join('')}
+        </tbody></table></div>
+      </div>`;
+    });
+  }
+  content.innerHTML = html;
+  window._pasifTumuRows = rows;
+}
+async function exportPasifTumu(temsilci){
+  const rows = (window._pasifTumuRows || []).filter(r => !temsilci || r.temsilci === temsilci);
+  if(rows.length===0){ alert('Aktarılacak veri yok.'); return; }
+  const viewDate = document.getElementById('viewDate').value;
+  const exportRows = rows.map(r => ({
+    Temsilci: r.temsilci, Login: r.login, Telefon: r.telefon, 'Kayıt Tarihi': r.kayit_tarihi,
+    'Toplam Yatırım': r.toplam_yatirim, 'Son Yatırım Tarihi': r._sonYatirim || '',
+    'Eşik': r._gunSayisi + '. Gün'
+  }));
+  const filename = temsilci ? `pasif_${temsilci}_${viewDate}.xlsx` : `pasif_tumu_${viewDate}.xlsx`;
+  await writeStyledWorkbook([{name:'Pasif Uyeler', color:'FF8F3A30', rows: exportRows}], filename);
 }
 function renderCurrentPage(page){
   if(page==='planlama'){ renderPlanlamaPage(); return; }
@@ -1093,8 +1204,18 @@ function renderCurrentPage(page){
       ]
     });
   }
+  if(page==='yeni-vip'){
+    renderYeniVipView(viewDate);
+    document.getElementById('cnt-yeni-vip').textContent = getYeniVipCandidates(viewDate).length;
+  }
   if(page==='pasif'){
     renderPasifTabs();
+    if(pasifAktifGun === 'tumu'){
+      const summaryElTumu = document.getElementById('pasif-summary');
+      if(summaryElTumu) summaryElTumu.innerHTML = '';
+      renderPasifTumuView(viewDate);
+      return;
+    }
     const rows = getPasifCandidates(viewDate, pasifAktifGun);
     const summaryEl = document.getElementById('pasif-summary');
     if(summaryEl){
