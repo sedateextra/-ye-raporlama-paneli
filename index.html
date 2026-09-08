@@ -288,17 +288,23 @@
       <!-- VERİ YÜKLEME -->
       <div class="page" id="page-veri-yukleme">
         <h1 class="page-title">Veri Yükleme</h1>
-        <div class="page-sub">Günlük excel raporunu buradan yükleyin (4 sekme: YATIRIMSIZ GELENLER / YATIRIMLI GELENLER / VIP / VIP'YE YAKIN)</div>
-        <div class="upload-box">
+        <div class="page-sub">Excel rapor(lar)ını buradan yükleyin — tarih her satırdaki "Atanma Tarihi"nden otomatik belirlenir</div>
+        <div class="upload-box" id="uploadDropZone">
           <div>
-            <input type="file" id="fileInput" accept=".xlsx">
+            <input type="file" id="fileInput" accept=".xlsx" multiple>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px;">Birden fazla dosya seçebilir/sürükleyebilirsiniz</div>
           </div>
           <div>
-            <label style="font-size:11px;color:var(--muted)">Rapor tarihi</label><br>
+            <label style="font-size:11px;color:var(--muted)">Yedek tarih (Atanma Tarihi boşsa kullanılır)</label><br>
             <input type="date" id="reportDate">
           </div>
           <button class="btn" onclick="handleUpload()">Excel'i Oku ve Önizle</button>
           <span id="uploadStatus" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;margin:-10px 0 20px;">
+          <button class="btn secondary" onclick="pickDownloadsFolder()">İndirilenler Klasörünü Bağla</button>
+          <button class="btn secondary" onclick="loadFromDownloadsFolder()">Klasördeki En Son Excel'i Bul</button>
+          <span id="klasorStatus" style="font-size:12px;color:var(--muted)"></span>
         </div>
         <div id="uploadPreview" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:20px;">
           <div id="uploadPreviewText" style="font-size:13px;margin-bottom:14px;"></div>
@@ -1508,61 +1514,181 @@ document.getElementById('fileInput').addEventListener('change', function(){
 
 let pendingUpload = null;
 
+function idbGet(key){
+  return new Promise((resolve,reject)=>{
+    const req = indexedDB.open('golbet_panel_fs', 1);
+    req.onupgradeneeded = ()=> req.result.createObjectStore('handles');
+    req.onsuccess = ()=>{
+      const tx = req.result.transaction('handles','readonly');
+      const getReq = tx.objectStore('handles').get(key);
+      getReq.onsuccess = ()=> resolve(getReq.result);
+      getReq.onerror = ()=> reject(getReq.error);
+    };
+    req.onerror = ()=> reject(req.error);
+  });
+}
+function idbSet(key, value){
+  return new Promise((resolve,reject)=>{
+    const req = indexedDB.open('golbet_panel_fs', 1);
+    req.onupgradeneeded = ()=> req.result.createObjectStore('handles');
+    req.onsuccess = ()=>{
+      const tx = req.result.transaction('handles','readwrite');
+      tx.objectStore('handles').put(value, key);
+      tx.oncomplete = ()=> resolve();
+      tx.onerror = ()=> reject(tx.error);
+    };
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function pickDownloadsFolder(){
+  const status = document.getElementById('klasorStatus');
+  if(!window.showDirectoryPicker){ status.textContent = 'Tarayıcınız bu özelliği desteklemiyor (Chrome/Edge gerekli).'; return; }
+  try{
+    const handle = await window.showDirectoryPicker();
+    await idbSet('indirilenlerKlasoru', handle);
+    status.textContent = 'Klasör bağlandı: ' + handle.name;
+  }catch(e){
+    // kullanıcı iptal etti, sessizce geç
+  }
+}
+async function loadFromDownloadsFolder(){
+  const status = document.getElementById('klasorStatus');
+  let handle;
+  try{ handle = await idbGet('indirilenlerKlasoru'); }catch(e){}
+  if(!handle){ status.textContent = 'Önce "İndirilenler Klasörünü Bağla" ile bir klasör seçin.'; return; }
+
+  let perm = await handle.queryPermission({mode:'read'});
+  if(perm !== 'granted'){
+    perm = await handle.requestPermission({mode:'read'});
+    if(perm !== 'granted'){ status.textContent = 'Klasöre erişim izni verilmedi.'; return; }
+  }
+
+  status.textContent = 'Dosyalar taranıyor...';
+  let enSonDosya = null, enSonZaman = 0;
+  for await (const [name, entryHandle] of handle.entries()){
+    if(entryHandle.kind !== 'file') continue;
+    if(!name.toLowerCase().endsWith('.xlsx')) continue;
+    const file = await entryHandle.getFile();
+    if(file.lastModified > enSonZaman){ enSonZaman = file.lastModified; enSonDosya = file; }
+  }
+  if(!enSonDosya){ status.textContent = 'Klasörde excel dosyası bulunamadı.'; return; }
+
+  const dt = new DataTransfer();
+  dt.items.add(enSonDosya);
+  document.getElementById('fileInput').files = dt.files;
+  document.getElementById('fileInput').dispatchEvent(new Event('change'));
+  status.textContent = `Bulundu: ${enSonDosya.name} — şimdi "Excel'i Oku ve Önizle"ye basın.`;
+}
+function initUploadDropZone(){
+  const zone = document.getElementById('uploadDropZone');
+  if(!zone || zone._dropBound) return;
+  zone._dropBound = true;
+  zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.style.borderColor = 'var(--accent)'; });
+  zone.addEventListener('dragleave', ()=>{ zone.style.borderColor = ''; });
+  zone.addEventListener('drop', e=>{
+    e.preventDefault();
+    zone.style.borderColor = '';
+    if(e.dataTransfer.files.length){
+      document.getElementById('fileInput').files = e.dataTransfer.files;
+      document.getElementById('fileInput').dispatchEvent(new Event('change'));
+    }
+  });
+}
+function parseTRDateTime(s){
+  if(!s) return null;
+  const str = String(s).trim();
+  const m = str.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+  if(!m) return null;
+  const dd=m[1], mm=m[2], yyyy=m[3], hh=m[4]||'00', mi=m[5]||'00', ss=m[6]||'00';
+  return new Date(parseInt(yyyy), parseInt(mm)-1, parseInt(dd), parseInt(hh), parseInt(mi), parseInt(ss));
+}
+function hesaplaSegment(kayitZamani, ilkYatirimZamani, sonYatirimZamani){
+  const ilkYat = ilkYatirimZamani || sonYatirimZamani;
+  if(!kayitZamani || !ilkYat) return 'yatirimsiz';
+  const kesim = new Date(kayitZamani);
+  kesim.setDate(kesim.getDate()+1);
+  kesim.setHours(10,0,0,0);
+  return ilkYat < kesim ? 'yatirimli' : 'yatirimsiz';
+}
+
 async function handleUpload(){
   if(!sb){ document.getElementById('uploadStatus').textContent = 'Önce Ayarlar sayfasından Supabase bağlantısı kurun.'; return; }
   const fileInput = document.getElementById('fileInput');
-  const file = fileInput.files[0];
-  const dateStr = document.getElementById('reportDate').value;
+  const files = Array.from(fileInput.files || []);
   const status = document.getElementById('uploadStatus');
-  if(!file){ status.textContent='Önce bir excel dosyası seçin.'; return; }
-  if(!dateStr){ status.textContent='Rapor tarihi seçin.'; return; }
+  if(files.length===0){ status.textContent='Önce en az bir excel dosyası seçin.'; return; }
 
-  status.textContent = 'Okunuyor...';
-  const buf = await file.arrayBuffer();
-  const wb = XLSX.read(new Uint8Array(buf), {type:'array'});
-  const records = [];
-  const sheetCounts = {};
-  wb.SheetNames.forEach(name => {
-    const segment = SHEET_MAP[name.trim()];
-    if(!segment) return;
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], {defval:''});
-    let count = 0;
-    rows.forEach(r => {
-      const login = String(r['Login']||'').trim();
+  const fallbackTarih = document.getElementById('reportDate').value || null;
+  status.textContent = `Okunuyor... (0/${files.length} dosya)`;
+  const allRecords = [];
+  let atlananSifirYatirim = 0;
+  let tarihsizAtlanan = 0;
+
+  for(let fi=0; fi<files.length; fi++){
+    const file = files[fi];
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(new Uint8Array(buf), {type:'array'});
+    const sheetName = wb.SheetNames[0];
+    const rawRows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {defval:''});
+
+    rawRows.forEach(r => {
+      const login = String(r['Kullanıcı Adı']||'').trim();
       if(!login) return;
-      count++;
-      records.push({
-        tarih: dateStr,
-        login: login,
-        temsilci: String(r['Excel Login']||'').trim(),
-        telefon: String(r['Excel Phone']||'').trim(),
-        kayit_tarihi: r['Kayıt Tarihi'] ? String(r['Kayıt Tarihi']).slice(0,10) : null,
-        segment: segment,
-        yatirim_adedi: toNum(r['Yatırım Adedi']),
-        toplam_yatirim: toNum(r['Toplam Yatırım (₺)']),
-        ilk_yatirim: toNum(r['İlk Yatırım (₺)']),
+      const yatirimAdedi = toNum(r['Yatırım Adedi']);
+      if(yatirimAdedi < 1){ atlananSifirYatirim++; return; }
+
+      const atanmaZamani = parseTRDateTime(r['Atanma Tarihi']);
+      const tarih = atanmaZamani ? atanmaZamani.toISOString().slice(0,10) : fallbackTarih;
+      if(!tarih){ tarihsizAtlanan++; return; }
+
+      const kayitZamani = parseTRDateTime(r['Kayıt Tarihi']);
+      const ilkYatZamani = parseTRDateTime(r['İlk Yatırım Tarihi']);
+      const sonYatZamani = parseTRDateTime(r['Son Yatırım Tarihi']);
+      const sonCekZamani = parseTRDateTime(r['Son Çekim Tarihi']);
+      const senkronZamani = parseTRDateTime(r['Senkron Tarihi']);
+      const segment = hesaplaSegment(kayitZamani, ilkYatZamani, sonYatZamani);
+
+      allRecords.push({
+        tarih, login,
+        isim: String(r['Ad']||'').trim(),
+        temsilci: String(r['Personel']||'').trim(),
+        telefon: String(r['Telefon']||'').trim(),
+        kayit_tarihi: kayitZamani ? kayitZamani.toISOString().slice(0,10) : null,
+        segment,
+        yatirim_adedi: yatirimAdedi,
+        toplam_yatirim: toNum(r['Toplam Yatırım']),
+        ilk_yatirim: toNum(r['İlk Yatırım Tutarı']),
+        ilk_yatirim_zamani: ilkYatZamani ? ilkYatZamani.toISOString() : null,
+        son_yatirim_zamani: sonYatZamani ? sonYatZamani.toISOString() : null,
         cekim_adedi: toNum(r['Çekim Adedi']),
-        toplam_cekim: toNum(r['Toplam Çekim (₺)']),
-        ilk_cekim: toNum(r['İlk Çekim (₺)']),
-        vip_kontrol: String(r['VIP KONTROL']||''),
-        hediye_hakki: String(r['HEDİYE HAKKI DURUM']||'')
+        toplam_cekim: toNum(r['Toplam Çekim']),
+        ilk_cekim: toNum(r['İlk Çekim Tutarı']),
+        son_cekim_zamani: sonCekZamani ? sonCekZamani.toISOString() : null,
+        bakiye: toNum(r['Bakiye']),
+        senkron_zamani: senkronZamani ? senkronZamani.toISOString() : null,
+        vip_kontrol: '', hediye_hakki: ''
       });
     });
-    sheetCounts[name] = count;
-  });
-  if(records.length===0){ status.textContent='Sekme isimleri beklenenle eşleşmedi, veri bulunamadı.'; return; }
+    status.textContent = `Okunuyor... (${fi+1}/${files.length} dosya)`;
+  }
 
-  const existing = store_existingLoginsForDate(dateStr);
-  const yeniSayisi = records.filter(r => !existing.has(r.login)).length;
-  const guncellenenSayisi = records.length - yeniSayisi;
+  if(allRecords.length===0){ status.textContent='İşlenecek (en az 1 yatırımı olan, tarihi belirlenebilen) üye bulunamadı.'; return; }
 
-  pendingUpload = {records, dateStr, fileName: file.name};
+  const tarihGruplari = {};
+  allRecords.forEach(r=>{ (tarihGruplari[r.tarih] ||= []).push(r); });
+  const tarihler = Object.keys(tarihGruplari).sort();
+
+  pendingUpload = {records: allRecords, fileName: files.map(f=>f.name).join(', ')};
   status.textContent = '';
-  const previewLines = Object.entries(sheetCounts).map(([sheet,c])=>`• ${sheet}: ${c} satır`).join('<br>');
+  const tarihSatirlari = tarihler.map(t=>{
+    const grup = tarihGruplari[t];
+    const yatirimli = grup.filter(r=>r.segment==='yatirimli').length;
+    return `• ${t}: ${grup.length} üye (${yatirimli} yatırımlı, ${grup.length-yatirimli} yatırımsız)`;
+  }).join('<br>');
   document.getElementById('uploadPreviewText').innerHTML = `
-    <b>${dateStr}</b> tarihi için <b>${records.length}</b> kayıt okundu (${file.name})<br>
-    ${previewLines}<br><br>
-    ${existing.size>0 ? `${yeniSayisi} yeni üye, ${guncellenenSayisi} güncellenecek kayıt (bu tarih için zaten ${existing.size} kayıt var — üzerine yazılacak).` : `Bu tarih için ilk kayıt — hepsi yeni eklenecek.`}
+    <b>${files.length}</b> dosyadan <b>${allRecords.length}</b> yatırımlı üye okundu, <b>${tarihler.length}</b> farklı tarihe dağıtıldı:<br>
+    ${tarihSatirlari}<br><br>
+    0 yatırımlı olduğu için atlanan: ${atlananSifirYatirim}${tarihsizAtlanan?`<br>Tarihi belirlenemediği için atlanan (Atanma Tarihi boş, yedek tarih de seçilmemiş): ${tarihsizAtlanan}`:''}
   `;
   document.getElementById('uploadPreview').style.display = 'block';
 }
@@ -1576,15 +1702,15 @@ function cancelUpload(){
 }
 async function confirmUpload(){
   if(!pendingUpload) return;
-  const {records, dateStr, fileName} = pendingUpload;
+  const {records, fileName} = pendingUpload;
   const status = document.getElementById('uploadStatus');
 
   const veriMap = new Map();
-  records.forEach(r => veriMap.set(r.login, r));
+  records.forEach(r => veriMap.set(r.login+'|'+r.tarih, r));
   const veriRows = [...veriMap.values()];
 
   const segMap = new Map();
-  records.forEach(r => segMap.set(r.login+'|'+r.segment, {tarih:r.tarih, login:r.login, segment:r.segment}));
+  records.forEach(r => segMap.set(r.tarih+'|'+r.login+'|'+r.segment, {tarih:r.tarih, login:r.login, segment:r.segment}));
   const segRows = [...segMap.values()];
 
   status.textContent = `Yükleniyor... 0/${veriRows.length}`;
@@ -1600,16 +1726,24 @@ async function confirmUpload(){
     const {error} = await sb.from('gunluk_segment').upsert(chunk, {onConflict:'tarih,login,segment'});
     if(error){ status.textContent = 'Hata (segment): ' + error.message; return; }
   }
-  await sb.from('yukleme_gecmisi').insert({
-    tarih: dateStr, kayit_sayisi: records.length, dosya_adi: fileName,
-    yukleyen: (await sb.auth.getUser()).data.user?.email || null
-  });
-  status.textContent = `${records.length} üye kaydedildi (${dateStr}).`;
+
+  const tarihSayilari = {};
+  veriRows.forEach(r=>{ tarihSayilari[r.tarih] = (tarihSayilari[r.tarih]||0)+1; });
+  const kullaniciEmail = (await sb.auth.getUser()).data.user?.email || null;
+  const logKayitlari = Object.entries(tarihSayilari).map(([tarih,sayi])=>({
+    tarih, kayit_sayisi: sayi, dosya_adi: fileName, yukleyen: kullaniciEmail
+  }));
+  await sb.from('yukleme_gecmisi').insert(logKayitlari);
+
+  const tarihSayisi = Object.keys(tarihSayilari).length;
+  status.textContent = `${veriRows.length} üye kaydedildi (${tarihSayisi} farklı tarihe).`;
   document.getElementById('uploadPreview').style.display = 'none';
   document.getElementById('fileInput').value = '';
   pendingUpload = null;
   await refreshData();
-  await sendUploadAlerts(dateStr);
+  if(tarihSayisi === 1){
+    await sendUploadAlerts(Object.keys(tarihSayilari)[0]);
+  }
   renderUploadLog();
 }
 /* ================= HAFTALIK RAPORLAR ================= */
@@ -1942,6 +2076,7 @@ async function renderUploadLog(){
 /* ================= BAŞLAT ================= */
 initTheme();
 initConnection();
+initUploadDropZone();
 </script>
 </body>
 </html>
