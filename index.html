@@ -1602,10 +1602,9 @@ function parseTRDateTime(s){
   const dd=m[1], mm=m[2], yyyy=m[3], hh=m[4]||'00', mi=m[5]||'00', ss=m[6]||'00';
   return new Date(parseInt(yyyy), parseInt(mm)-1, parseInt(dd), parseInt(hh), parseInt(mi), parseInt(ss));
 }
-function hesaplaSegment(atanmaZamani, ilkYatirimZamani, sonYatirimZamani){
-  const ilkYat = ilkYatirimZamani || sonYatirimZamani;
-  if(!atanmaZamani || !ilkYat) return 'yatirimsiz';
-  return ilkYat < atanmaZamani ? 'yatirimli' : 'yatirimsiz';
+function hesaplaSegment(atanmaZamani, sonYatirimZamani){
+  if(!atanmaZamani || !sonYatirimZamani) return 'yatirimsiz';
+  return sonYatirimZamani < atanmaZamani ? 'yatirimli' : 'yatirimsiz';
 }
 
 async function handleUpload(){
@@ -1632,8 +1631,6 @@ async function handleUpload(){
       const login = String(r['Kullanıcı Adı']||'').trim();
       if(!login) return;
       const yatirimAdedi = toNum(r['Yatırım Adedi']);
-      const toplamYatirimKontrol = toNum(r['Toplam Yatırım']);
-      if(toplamYatirimKontrol <= 1){ atlananSifirYatirim++; return; }
 
       const atanmaZamani = parseTRDateTime(r['Atanma Tarihi']);
       const tarih = atanmaZamani ? atanmaZamani.toISOString().slice(0,10) : fallbackTarih;
@@ -1644,7 +1641,7 @@ async function handleUpload(){
       const sonYatZamani = parseTRDateTime(r['Son Yatırım Tarihi']);
       const sonCekZamani = parseTRDateTime(r['Son Çekim Tarihi']);
       const senkronZamani = parseTRDateTime(r['Senkron Tarihi']);
-      const segment = hesaplaSegment(atanmaZamani, ilkYatZamani, sonYatZamani);
+      const segment = hesaplaSegment(atanmaZamani, sonYatZamani);
 
       allRecords.push({
         tarih, login,
