@@ -1632,7 +1632,8 @@ async function handleUpload(){
       const login = String(r['Kullanıcı Adı']||'').trim();
       if(!login) return;
       const yatirimAdedi = toNum(r['Yatırım Adedi']);
-      if(yatirimAdedi < 1){ atlananSifirYatirim++; return; }
+      const toplamYatirimKontrol = toNum(r['Toplam Yatırım']);
+      if(toplamYatirimKontrol <= 1){ atlananSifirYatirim++; return; }
 
       const atanmaZamani = parseTRDateTime(r['Atanma Tarihi']);
       const tarih = atanmaZamani ? atanmaZamani.toISOString().slice(0,10) : fallbackTarih;
