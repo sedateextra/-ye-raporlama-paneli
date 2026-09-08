@@ -1602,13 +1602,10 @@ function parseTRDateTime(s){
   const dd=m[1], mm=m[2], yyyy=m[3], hh=m[4]||'00', mi=m[5]||'00', ss=m[6]||'00';
   return new Date(parseInt(yyyy), parseInt(mm)-1, parseInt(dd), parseInt(hh), parseInt(mi), parseInt(ss));
 }
-function hesaplaSegment(kayitZamani, ilkYatirimZamani, sonYatirimZamani){
+function hesaplaSegment(atanmaZamani, ilkYatirimZamani, sonYatirimZamani){
   const ilkYat = ilkYatirimZamani || sonYatirimZamani;
-  if(!kayitZamani || !ilkYat) return 'yatirimsiz';
-  const kesim = new Date(kayitZamani);
-  kesim.setDate(kesim.getDate()+1);
-  kesim.setHours(10,0,0,0);
-  return ilkYat < kesim ? 'yatirimli' : 'yatirimsiz';
+  if(!atanmaZamani || !ilkYat) return 'yatirimsiz';
+  return ilkYat < atanmaZamani ? 'yatirimli' : 'yatirimsiz';
 }
 
 async function handleUpload(){
@@ -1646,7 +1643,7 @@ async function handleUpload(){
       const sonYatZamani = parseTRDateTime(r['Son Yatırım Tarihi']);
       const sonCekZamani = parseTRDateTime(r['Son Çekim Tarihi']);
       const senkronZamani = parseTRDateTime(r['Senkron Tarihi']);
-      const segment = hesaplaSegment(kayitZamani, ilkYatZamani, sonYatZamani);
+      const segment = hesaplaSegment(atanmaZamani, ilkYatZamani, sonYatZamani);
 
       allRecords.push({
         tarih, login,
