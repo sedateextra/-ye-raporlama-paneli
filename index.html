@@ -1604,7 +1604,10 @@ function parseTRDateTime(s){
 }
 function hesaplaSegment(atanmaZamani, sonYatirimZamani){
   if(!atanmaZamani || !sonYatirimZamani) return 'yatirimsiz';
-  return sonYatirimZamani < atanmaZamani ? 'yatirimli' : 'yatirimsiz';
+  const kesim = new Date(atanmaZamani);
+  kesim.setDate(kesim.getDate()+1);
+  kesim.setHours(10,0,0,0);
+  return sonYatirimZamani < kesim ? 'yatirimli' : 'yatirimsiz';
 }
 
 async function handleUpload(){
