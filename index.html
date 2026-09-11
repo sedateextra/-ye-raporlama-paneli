@@ -1157,18 +1157,23 @@ async function exportPasifKontrol(temsilci, gunFilter){
   if(rows.length===0){ alert('Aktarılacak veri yok.'); return; }
   const raporTarihi = rows[0].rapor_tarihi;
   const exportRows = rows.map(r=>({
-    Telefon: r.telefon, Personel: r.temsilci, Ad: r.isim, 'Kullanıcı Adı': r.login,
-    'Son Giriş': r.son_giris ? new Date(r.son_giris).toLocaleString('tr-TR') : '',
-    'Son Bahis': r.son_bahis ? new Date(r.son_bahis).toLocaleString('tr-TR') : '',
-    'Casino Son Bahis': r.casino_son_bahis ? new Date(r.casino_son_bahis).toLocaleString('tr-TR') : '',
-    'Spor Son Bahis': r.spor_son_bahis ? new Date(r.spor_son_bahis).toLocaleString('tr-TR') : '',
-    'İlk Yatırım Tarihi': r.ilk_yatirim_tarihi ? new Date(r.ilk_yatirim_tarihi).toLocaleString('tr-TR') : '',
-    'Son Yatırım Tarihi': r.son_yatirim_tarihi ? new Date(r.son_yatirim_tarihi).toLocaleString('tr-TR') : '',
-    'Toplam Yatırım': r.toplam_yatirim, 'Yatırım Adedi': r.yatirim_adedi,
-    'İlk Çekim Tarihi': r.ilk_cekim_tarihi ? new Date(r.ilk_cekim_tarihi).toLocaleString('tr-TR') : '',
-    'İlk Çekim Tutarı': r.ilk_cekim_tutari,
-    'Son Çekim Tarihi': r.son_cekim_tarihi ? new Date(r.son_cekim_tarihi).toLocaleString('tr-TR') : '',
-    'Toplam Çekim': r.toplam_cekim, 'Çekim Adedi': r.cekim_adedi, 'Bakiye': r.bakiye,
+    Telefon: r.telefon,
+    Personel: r.temsilci,
+    Ad: r.isim,
+    'Kullanıcı Adı': r.login,
+    'Durum': '',
+    'İlk Yatırım Tarihi': r.ilk_yatirim_tarihi || '',
+    'Son Yatırım Tarihi': r.son_yatirim_tarihi || '',
+    'Yatırım Adedi': r.yatirim_adedi,
+    'Toplam Yatırım': r.toplam_yatirim,
+    'Son Çekim Tarihi': r.son_cekim_tarihi || '',
+    'Toplam Çekim': r.toplam_cekim,
+    'Çekim Adedi': r.cekim_adedi,
+    'Son Giriş': r.son_giris || '',
+    'Son Bahis': r.son_bahis || '',
+    'Casino Son Bahis': r.casino_son_bahis || '',
+    'Spor Son Bahis': r.spor_son_bahis || '',
+    'Bakiye': r.bakiye,
     'Kaç Gündür Pasif': r.gun_sayisi + ' gün'
   }));
   const dosyaAdi = temsilci ? `pasif_${temsilci}_${raporTarihi}.xlsx` : `pasif_tumu_${raporTarihi}.xlsx`;
@@ -1214,7 +1219,7 @@ async function exportKombine(temsilci){
     Temsilci: r.temsilci, Login: r.login, Telefon: r.telefon, Ad: r.isim,
     'Toplam Yatırım': r.toplam_yatirim, 'Yatırım Adedi': r.yatirim_adedi,
     'Toplam Çekim': r.toplam_cekim, 'Çekim Adedi': r.cekim_adedi, Bakiye: r.bakiye,
-    'Son Yatırım Tarihi': r.son_yatirim_tarihi ? new Date(r.son_yatirim_tarihi).toLocaleString('tr-TR') : '',
+    'Son Yatırım Tarihi': r.son_yatirim_tarihi || '',
     'Kaç Gündür Pasif': r.gun_sayisi + ' gün',
     'Rapor Tarihi': r.rapor_tarihi
   }));
