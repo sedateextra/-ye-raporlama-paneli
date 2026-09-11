@@ -8,6 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -245,8 +246,16 @@
       <div class="page" id="page-terfi"></div>
       <div class="page" id="page-yeni-vip"></div>
       <div class="page" id="page-pasif">
+        <h1 class="page-title">Pasif Yatırımlı Üyeler</h1>
+        <div class="page-sub">Pasif kontrol CSV'sini yükleyin — Rapor Tarihi ile Son Yatırım Tarihi karşılaştırılarak hesaplanır</div>
+        <div class="upload-box">
+          <div>
+            <input type="file" id="pasifCsvInput" accept=".csv">
+          </div>
+          <button class="btn" onclick="handlePasifCsvUpload()">CSV'yi Yükle</button>
+          <span id="pasifCsvStatus" style="font-size:12px;color:var(--muted)"></span>
+        </div>
         <div id="pasif-tabs" style="margin-bottom:16px;"></div>
-        <div id="pasif-summary" style="margin-bottom:16px;"></div>
         <div id="pasif-content"></div>
       </div>
 
@@ -389,17 +398,11 @@ async function sendUploadAlerts(dateStr){
   const prevData = prevDate ? (latestByDate[prevDate]||{}) : {};
 
   const yeniVip = Object.values(dayData).filter(r => r.toplam_yatirim >= VIP_ESIK && (!prevData[r.login] || prevData[r.login].toplam_yatirim < VIP_ESIK));
-  const yeniPasif = getPasifCandidates(dateStr);
 
   if(yeniVip.length){
     const list = yeniVip.slice(0,6).map(r=>`${r.login} — ${fmtMoney(r.toplam_yatirim)}`).join('<br>');
     const more = yeniVip.length>6 ? `<br>...ve ${yeniVip.length-6} kişi daha` : '';
     showToast(`🏆 ${yeniVip.length} yeni VIP üye`, list+more, 'vip', 'vip');
-  }
-  if(yeniPasif.length){
-    const list = yeniPasif.slice(0,6).map(r=>r.login).join('<br>');
-    const more = yeniPasif.length>6 ? `<br>...ve ${yeniPasif.length-6} kişi daha` : '';
-    showToast(`⚠️ ${yeniPasif.length} üye pasifliğe girdi`, list+more, 'pasif', 'pasif');
   }
 }
 
@@ -469,6 +472,7 @@ function showApp(session){
   refreshData();
   renderUploadLog();
   loadHatirlatmalar().then(showTodayReminderPopupIfNeeded);
+  loadPasifKontrol();
 }
 async function handleLogin(){
   const email = document.getElementById('loginEmail').value.trim();
@@ -536,6 +540,7 @@ const VIP_ESIK = 10000;
 let historyByLogin = {};   // login -> [{tarih, ...}] asc sorted
 let segmentsByDate = {};   // tarih -> { login: Set(segment,...) } — a member can be in more than one sheet the same day
 let dateList = [];         // desc sorted unique dates
+let pasifKontrolRows = []; // en son yüklenen Pasif Kontrol CSV'sinin satırları
 let latestByDate = {};     // tarih -> {login: row}
 
 function toNum(v){
@@ -825,12 +830,6 @@ const TOPLU_EXPORT_DEFS = [
   {key:'vip', label:'VIP Üyeler', sheet:'VIP Uyeler', color:'FF9C7A1E', filter:(r)=>r.toplam_yatirim >= VIP_ESIK},
   {key:'vipyakin-durum', label:'VIP Statüsüne Yaklaşan Üyeler', sheet:'VIP Statusune Yaklasan', color:'FF8A6A2F', filter:(r)=>!!tierFor(r.toplam_yatirim)},
   {key:'terfi', label:'VIP Terfiye Yaklaşan Üyeler', sheet:'VIP Terfiye Yaklasan', color:'FFB5652A', filter:(r)=>isTerfiYaklasan(r.toplam_yatirim)},
-  {key:'pasif', label:'Pasif Yatırımlı Üyeler', sheet:'Pasif Yatirimli', color:'FF8F3A30', filter:(r,viewDate)=>{
-    if(!hasSegment(viewDate, r.login, 'yatirimli')) return false;
-    const d = lastIncreaseDate(r.login, viewDate);
-    const gun = d ? daysBetween(d, viewDate) : null;
-    return gun !== null && PASIF_GUN_SECENEKLERI.includes(gun);
-  }},
 ];
 function buildExportRow(r, viewDate, segKey){
   const base = {
@@ -972,7 +971,7 @@ async function runTopluExport(){
   const dayData = latestByDate[viewDate] || {};
   const sheetDefs = checked.map(key=>{
     const def = TOPLU_EXPORT_DEFS.find(d=>d.key===key);
-    const sourceRows = key === 'pasif' ? getPasifCandidates(viewDate) : Object.values(dayData).filter(r=>def.filter(r, viewDate));
+    const sourceRows = Object.values(dayData).filter(r=>def.filter(r, viewDate));
     const rows = sourceRows.map(r=>buildExportRow(r, viewDate, key));
     return {name: def.sheet, color: def.color, rows};
   });
@@ -991,67 +990,189 @@ async function exportRows(containerId){
 }
 
 /* ================= SAYFA RENDER YÖNLENDİRME ================= */
-function nextDateAfter(dateStr){
-  const sorted = dateList.slice().sort();
-  const idx = sorted.indexOf(dateStr);
-  if(idx === -1 || idx === sorted.length-1) return null;
-  return sorted[idx+1];
+function temizPhoneAlani(s){
+  const m = String(s||'').match(/^="?(.*?)"?$/);
+  return m ? m[1] : String(s||'').trim();
 }
-function checkNextDayDeposit(login, flaggedDate){
-  const nextDate = nextDateAfter(flaggedDate);
-  if(!nextDate) return {hasNext:false, yaptiMi:false, nextDate:null};
-  const hist = historyByLogin[login] || [];
-  const flaggedRecord = hist.find(h=>h.tarih===flaggedDate);
-  const nextRecord = hist.find(h=>h.tarih===nextDate);
-  if(!flaggedRecord || !nextRecord) return {hasNext:!!nextRecord, yaptiMi:false, nextDate};
-  const yaptiMi = nextRecord.yatirim_adedi > flaggedRecord.yatirim_adedi || nextRecord.toplam_yatirim > flaggedRecord.toplam_yatirim;
-  return {hasNext:true, yaptiMi, nextDate};
+async function loadPasifKontrol(){
+  if(!sb) return;
+  const {data, error} = await sb.from('pasif_kontrol').select('*').order('rapor_tarihi', {ascending:false}).limit(5000);
+  if(error || !data || data.length===0){ pasifKontrolRows = []; return; }
+  const enSonTarih = data[0].rapor_tarihi;
+  pasifKontrolRows = data.filter(r=>r.rapor_tarihi === enSonTarih);
 }
-function checkGeriDonus(login, flaggedDate){
-  const hist = historyByLogin[login] || [];
-  const flaggedRecord = hist.find(h=>h.tarih === flaggedDate);
-  if(!flaggedRecord) return {yaptiMi:false, tarih:null, fark:0};
-  for(let i=0;i<hist.length;i++){
-    if(hist[i].tarih <= flaggedDate) continue;
-    if(hist[i].yatirim_adedi > flaggedRecord.yatirim_adedi || hist[i].toplam_yatirim > flaggedRecord.toplam_yatirim){
-      return {yaptiMi:true, tarih:hist[i].tarih, fark: hist[i].toplam_yatirim - flaggedRecord.toplam_yatirim};
-    }
-  }
-  return {yaptiMi:false, tarih:null, fark:0};
-}
-function getPasifCandidates(viewDate, gunFilter){
-  const idx = dateList.indexOf(viewDate);
-  const prevUploadedDate = idx >= 0 ? dateList[idx+1] : null;
-  const result = [];
-  Object.keys(historyByLogin).forEach(login=>{
-    const hist = historyByLogin[login];
-    const hicYatirimYapmis = hist.some(h => h.tarih <= viewDate && h.yatirim_adedi >= 1);
-    if(!hicYatirimYapmis) return;
-    let asOf = null;
-    for(let i=hist.length-1;i>=0;i--){
-      if(hist[i].tarih <= viewDate){ asOf = hist[i]; break; }
-    }
-    if(!asOf) return;
-    const lastDate = lastYatirimActivityDate(login, viewDate);
-    const gun = lastDate ? daysBetween(lastDate, viewDate) : null;
-    if(gun === null) return;
+async function handlePasifCsvUpload(){
+  if(!sb){ document.getElementById('pasifCsvStatus').textContent = 'Önce Ayarlar sayfasından Supabase bağlantısı kurun.'; return; }
+  const fileInput = document.getElementById('pasifCsvInput');
+  const file = fileInput.files[0];
+  const status = document.getElementById('pasifCsvStatus');
+  if(!file){ status.textContent = 'Önce bir CSV dosyası seçin.'; return; }
+  if(typeof Papa === 'undefined'){ status.textContent = 'CSV kütüphanesi yüklenemedi.'; return; }
 
-    let prevGun = null;
-    if(prevUploadedDate){
-      const prevLastDate = lastYatirimActivityDate(login, prevUploadedDate);
-      prevGun = prevLastDate ? daysBetween(prevLastDate, prevUploadedDate) : null;
-    }
-    const yeniGecti = (esik) => gun >= esik && !(prevGun !== null && prevGun >= esik);
+  status.textContent = 'Okunuyor...';
+  const text = await file.text();
+  const parsed = Papa.parse(text, {header:true, skipEmptyLines:true});
+  const rawRows = parsed.data;
 
-    if(gunFilter !== undefined && gunFilter !== null && gunFilter !== 'tumu'){
-      if(!yeniGecti(gunFilter)) return;
-    } else {
-      const gecilenEsik = PASIF_GUN_SECENEKLERI.find(esik => yeniGecti(esik));
-      if(!gecilenEsik) return;
-    }
-    result.push({...asOf, _sonYatirim:lastDate, _gunSayisi:gun});
+  let raporTarihi = null;
+  const kayitlar = [];
+  rawRows.forEach(r => {
+    const login = String(r['Kullanıcı Adı']||'').trim();
+    if(!login) return;
+    const rt = String(r['Rapor Tarihi']||'').trim();
+    if(rt) raporTarihi = rt;
+    const sonYat = parseTRDateTime(r['Son Yatırım Tarihi']);
+    kayitlar.push({
+      login,
+      temsilci: String(r['Personel']||'').trim(),
+      isim: String(r['Ad']||'').trim(),
+      telefon: temizPhoneAlani(r['Telefon']),
+      son_giris: parseTRDateTime(r['Son Giriş']),
+      son_bahis: parseTRDateTime(r['Son Bahis']),
+      casino_son_bahis: parseTRDateTime(r['Casino Son Bahis']),
+      spor_son_bahis: parseTRDateTime(r['Spor Son Bahis']),
+      ilk_yatirim_tarihi: parseTRDateTime(r['İlk Yatırım Tarihi']),
+      son_yatirim_tarihi: sonYat,
+      toplam_yatirim: toNum(r['Toplam Yatırım']),
+      yatirim_adedi: toNum(r['Yatırım Adedi']),
+      ilk_cekim_tarihi: parseTRDateTime(r['İlk Çekim Tarihi']),
+      ilk_cekim_tutari: toNum(r['İlk Çekim Tutarı']),
+      son_cekim_tarihi: parseTRDateTime(r['Son Çekim Tarihi']),
+      toplam_cekim: toNum(r['Toplam Çekim']),
+      cekim_adedi: toNum(r['Çekim Adedi']),
+      bakiye: toNum(r['Bakiye']),
+      _sonYatDate: sonYat
+    });
   });
-  return result;
+
+  if(!raporTarihi){ status.textContent = 'Rapor Tarihi bulunamadı.'; return; }
+  const raporTarihiDate = new Date(raporTarihi);
+
+  const dbRows = kayitlar.map(k=>{
+    const gun = k._sonYatDate ? Math.round((raporTarihiDate - k._sonYatDate) / 86400000) : null;
+    const {_sonYatDate, ...rest} = k;
+    return {
+      ...rest,
+      rapor_tarihi: raporTarihi,
+      son_giris: k.son_giris ? k.son_giris.toISOString() : null,
+      son_bahis: k.son_bahis ? k.son_bahis.toISOString() : null,
+      casino_son_bahis: k.casino_son_bahis ? k.casino_son_bahis.toISOString() : null,
+      spor_son_bahis: k.spor_son_bahis ? k.spor_son_bahis.toISOString() : null,
+      ilk_yatirim_tarihi: k.ilk_yatirim_tarihi ? k.ilk_yatirim_tarihi.toISOString() : null,
+      son_yatirim_tarihi: k.son_yatirim_tarihi ? k.son_yatirim_tarihi.toISOString() : null,
+      ilk_cekim_tarihi: k.ilk_cekim_tarihi ? k.ilk_cekim_tarihi.toISOString() : null,
+      son_cekim_tarihi: k.son_cekim_tarihi ? k.son_cekim_tarihi.toISOString() : null,
+      gun_sayisi: gun
+    };
+  });
+
+  status.textContent = `Yükleniyor... 0/${dbRows.length}`;
+  const chunkSize = 500;
+  for(let i=0;i<dbRows.length;i+=chunkSize){
+    const chunk = dbRows.slice(i, i+chunkSize);
+    const {error} = await sb.from('pasif_kontrol').upsert(chunk, {onConflict:'rapor_tarihi,login'});
+    if(error){ status.textContent = 'Hata: ' + error.message; return; }
+    status.textContent = `Yükleniyor... ${Math.min(i+chunkSize,dbRows.length)}/${dbRows.length}`;
+  }
+  status.textContent = `${dbRows.length} kayıt yüklendi (${raporTarihi}).`;
+  fileInput.value = '';
+  await loadPasifKontrol();
+
+  const esikSayilari = PASIF_GUN_SECENEKLERI.map(e => ({e, c: pasifKontrolRows.filter(r=>r.gun_sayisi===e).length}));
+  const ozet = esikSayilari.map(x=>`${x.e}. gün: ${x.c}`).join(' · ');
+  showToast('⚠️ Pasif Kontrol Güncellendi', ozet, 'pasif', 'pasif');
+
+  renderCurrentPage('pasif');
+}
+function renderPasifKontrolContent(){
+  const content = document.getElementById('pasif-content');
+  if(!content) return;
+  if(pasifKontrolRows.length===0){
+    content.innerHTML = '<div class="empty">Henüz pasif kontrol CSV\'si yüklenmedi.</div>';
+    return;
+  }
+  const raporTarihi = pasifKontrolRows[0].rapor_tarihi;
+  if(pasifAktifGun === 'tumu'){
+    const rows = pasifKontrolRows.filter(r => PASIF_GUN_SECENEKLERI.includes(r.gun_sayisi));
+    renderPasifKontrolTumu(rows, raporTarihi);
+  } else {
+    const rows = pasifKontrolRows.filter(r => r.gun_sayisi === pasifAktifGun);
+    renderPasifKontrolTekli(rows, raporTarihi);
+  }
+}
+function renderPasifKontrolTekli(rows, raporTarihi){
+  const content = document.getElementById('pasif-content');
+  let html = `<h1 class="page-title">Pasif Yatırımlı Üyeler — ${pasifAktifGun}. Gün</h1><div class="page-sub">Rapor Tarihi: ${raporTarihi} · ${rows.length} üye</div>`;
+  html += `<div class="toolbar" style="justify-content:flex-end;"><button class="btn secondary" onclick="exportPasifKontrol(null, ${pasifAktifGun})">Excel İndir</button></div>`;
+  if(rows.length===0){
+    html += '<div class="empty">Bu eşikte üye yok.</div>';
+  } else {
+    html += `<div class="table-wrap"><table><thead><tr><th>Login</th><th>Ad</th><th>Temsilci</th><th>Telefon</th><th>Toplam Yatırım</th><th>Son Yatırım</th><th>Bakiye</th></tr></thead><tbody>`;
+    rows.slice().sort((a,b)=>(a.temsilci||'').localeCompare(b.temsilci||'','tr')).forEach(r=>{
+      html += `<tr><td>${r.login}</td><td>${r.isim||''}</td><td>${r.temsilci||''}</td><td>${r.telefon||''}</td><td>${fmtMoney(r.toplam_yatirim)}</td><td>${r.son_yatirim_tarihi ? new Date(r.son_yatirim_tarihi).toLocaleString('tr-TR') : ''}</td><td>${fmtMoney(r.bakiye)}</td></tr>`;
+    });
+    html += `</tbody></table></div>`;
+  }
+  content.innerHTML = html;
+}
+function renderPasifKontrolTumu(rows, raporTarihi){
+  const content = document.getElementById('pasif-content');
+  const grouped = {};
+  rows.forEach(r=>{
+    const k = r.temsilci || '(atanmamış)';
+    if(!grouped[k]) grouped[k] = [];
+    grouped[k].push(r);
+  });
+  const temsilciler = Object.keys(grouped).sort((a,b)=>a.localeCompare(b,'tr'));
+  let html = `<h1 class="page-title">Pasif Yatırımlı Üyeler — Tümü</h1><div class="page-sub">Rapor Tarihi: ${raporTarihi} · 5/12/21/28. gün eşiklerindeki tüm üyeler, temsilciye göre gruplu · ${rows.length} üye</div>`;
+  html += `<div class="toolbar" style="justify-content:flex-end;"><button class="btn" onclick="exportPasifKontrol(null)">Hepsini İndir</button></div>`;
+  if(temsilciler.length===0){
+    html += '<div class="empty">Bu tarih için pasif üye yok.</div>';
+  } else {
+    temsilciler.forEach(t=>{
+      const list = grouped[t].slice().sort((a,b)=>a.gun_sayisi-b.gun_sayisi);
+      const safeT = t.replace(/'/g,"\\'");
+      html += `<div style="margin-top:22px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <h3 style="font-family:var(--font-display);font-size:15px;margin:0;">${t} <span style="color:var(--muted);font-weight:400;font-size:13px;">(${list.length} üye)</span></h3>
+          <button class="btn secondary" onclick="exportPasifKontrol('${safeT}')">Excel İndir</button>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Login</th><th>Ad</th><th>Telefon</th><th>Toplam Yatırım</th><th>Son Yatırım</th><th>Bakiye</th><th>Eşik</th></tr></thead><tbody>
+          ${list.map(r=>`<tr>
+            <td>${r.login}</td><td>${r.isim||''}</td><td>${r.telefon||''}</td>
+            <td>${fmtMoney(r.toplam_yatirim)}</td>
+            <td>${r.son_yatirim_tarihi ? new Date(r.son_yatirim_tarihi).toLocaleString('tr-TR') : ''}</td>
+            <td>${fmtMoney(r.bakiye)}</td><td>${r.gun_sayisi}. Gün</td>
+          </tr>`).join('')}
+        </tbody></table></div>
+      </div>`;
+    });
+  }
+  content.innerHTML = html;
+}
+async function exportPasifKontrol(temsilci, gunFilter){
+  let rows = pasifKontrolRows.filter(r => PASIF_GUN_SECENEKLERI.includes(r.gun_sayisi));
+  if(gunFilter !== undefined && gunFilter !== null) rows = rows.filter(r=>r.gun_sayisi===gunFilter);
+  if(temsilci) rows = rows.filter(r=>r.temsilci===temsilci);
+  if(rows.length===0){ alert('Aktarılacak veri yok.'); return; }
+  const raporTarihi = rows[0].rapor_tarihi;
+  const exportRows = rows.map(r=>({
+    Telefon: r.telefon, Personel: r.temsilci, Ad: r.isim, 'Kullanıcı Adı': r.login,
+    'Son Giriş': r.son_giris ? new Date(r.son_giris).toLocaleString('tr-TR') : '',
+    'Son Bahis': r.son_bahis ? new Date(r.son_bahis).toLocaleString('tr-TR') : '',
+    'Casino Son Bahis': r.casino_son_bahis ? new Date(r.casino_son_bahis).toLocaleString('tr-TR') : '',
+    'Spor Son Bahis': r.spor_son_bahis ? new Date(r.spor_son_bahis).toLocaleString('tr-TR') : '',
+    'İlk Yatırım Tarihi': r.ilk_yatirim_tarihi ? new Date(r.ilk_yatirim_tarihi).toLocaleString('tr-TR') : '',
+    'Son Yatırım Tarihi': r.son_yatirim_tarihi ? new Date(r.son_yatirim_tarihi).toLocaleString('tr-TR') : '',
+    'Toplam Yatırım': r.toplam_yatirim, 'Yatırım Adedi': r.yatirim_adedi,
+    'İlk Çekim Tarihi': r.ilk_cekim_tarihi ? new Date(r.ilk_cekim_tarihi).toLocaleString('tr-TR') : '',
+    'İlk Çekim Tutarı': r.ilk_cekim_tutari,
+    'Son Çekim Tarihi': r.son_cekim_tarihi ? new Date(r.son_cekim_tarihi).toLocaleString('tr-TR') : '',
+    'Toplam Çekim': r.toplam_cekim, 'Çekim Adedi': r.cekim_adedi, 'Bakiye': r.bakiye,
+    'Kaç Gündür Pasif': r.gun_sayisi + ' gün'
+  }));
+  const dosyaAdi = temsilci ? `pasif_${temsilci}_${raporTarihi}.xlsx` : `pasif_tumu_${raporTarihi}.xlsx`;
+  await writeStyledWorkbook([{name:'Pasif Kontrol', color:'FF8F3A30', rows: exportRows}], dosyaAdi);
 }
 function setPasifGun(g){
   pasifAktifGun = g;
@@ -1078,7 +1199,7 @@ function getYeniVipCandidates(viewDate){
 async function exportKombine(temsilci){
   const viewDate = document.getElementById('viewDate').value;
   const vipRows = getYeniVipCandidates(viewDate).filter(r => !temsilci || r.temsilci === temsilci);
-  const pasifRows = getPasifCandidates(viewDate).filter(r => !temsilci || r.temsilci === temsilci);
+  const pasifRows = pasifKontrolRows.filter(r => PASIF_GUN_SECENEKLERI.includes(r.gun_sayisi)).filter(r => !temsilci || r.temsilci === temsilci);
   if(vipRows.length===0 && pasifRows.length===0){ alert('Aktarılacak veri yok.'); return; }
   const vipExportRows = vipRows.map(r => ({
     Temsilci: r.temsilci, Login: r.login, Telefon: r.telefon, 'Kayıt Tarihi': r.kayit_tarihi,
@@ -1090,14 +1211,12 @@ async function exportKombine(temsilci){
     'Kaynak': memberSourceLabelHistoric(r.login, viewDate)
   }));
   const pasifExportRows = pasifRows.map(r => ({
-    Temsilci: r.temsilci, Login: r.login, Telefon: r.telefon, 'Kayıt Tarihi': r.kayit_tarihi,
-    'Yatırım Adedi': r.yatirim_adedi, 'Toplam Yatırım': r.toplam_yatirim,
-    'Çekim Adedi': r.cekim_adedi, 'Toplam Çekim': r.toplam_cekim, 'İlk Çekim': r.ilk_cekim,
-    'İlk Yatırım': r.ilk_yatirim, 'Son Yatırım Tarihi': r._sonYatirim || '',
-    'Son Çekim Tarihi': lastWithdrawalDate(r.login, viewDate) || '',
-    'Kaç Gündür Pasif': r._gunSayisi + ' gün',
-    'VIP Kontrol': r.vip_kontrol||'', 'Hediye Hakkı': r.hediye_hakki||'',
-    'Kaynak': memberSourceLabelHistoric(r.login, viewDate)
+    Temsilci: r.temsilci, Login: r.login, Telefon: r.telefon, Ad: r.isim,
+    'Toplam Yatırım': r.toplam_yatirim, 'Yatırım Adedi': r.yatirim_adedi,
+    'Toplam Çekim': r.toplam_cekim, 'Çekim Adedi': r.cekim_adedi, Bakiye: r.bakiye,
+    'Son Yatırım Tarihi': r.son_yatirim_tarihi ? new Date(r.son_yatirim_tarihi).toLocaleString('tr-TR') : '',
+    'Kaç Gündür Pasif': r.gun_sayisi + ' gün',
+    'Rapor Tarihi': r.rapor_tarihi
   }));
   const filename = temsilci ? `yeni_vip_ve_pasif_${temsilci}_${viewDate}.xlsx` : `yeni_vip_ve_pasif_tumu_${viewDate}.xlsx`;
   await writeStyledWorkbook([
@@ -1168,65 +1287,10 @@ async function exportYeniVip(temsilci){
   const filename = temsilci ? `yeni_vip_${temsilci}_${viewDate}.xlsx` : `yeni_vip_tumu_${viewDate}.xlsx`;
   await writeStyledWorkbook([{name:'Yeni VIP', color:'FF9C7A1E', rows: exportRows}], filename);
 }
-function renderPasifTumuView(viewDate){
-  const content = document.getElementById('pasif-content');
-  if(!content) return;
-  const rows = getPasifCandidates(viewDate);
-  const grouped = {};
-  rows.forEach(r=>{
-    const k = r.temsilci || '(atanmamış)';
-    if(!grouped[k]) grouped[k] = [];
-    grouped[k].push(r);
-  });
-  const temsilciler = Object.keys(grouped).sort((a,b)=>a.localeCompare(b,'tr'));
-
-  let html = `<h1 class="page-title">Pasif Yatırımlı Üyeler — Tümü</h1><div class="page-sub">5/12/21/28. gün eşiklerindeki tüm üyeler, temsilciye göre gruplu · ${rows.length} üye</div>`;
-  html += `<div class="toolbar" style="justify-content:flex-end;">
-    <button class="btn secondary" onclick="exportPasifTumu(null)">Hepsini İndir</button>
-    <button class="btn" onclick="exportKombine(null)">Tümü Kombine İndir (VIP+Pasif)</button>
-  </div>`;
-
-  if(temsilciler.length===0){
-    html += '<div class="empty">Bu tarih için pasif üye yok.</div>';
-  } else {
-    temsilciler.forEach(t=>{
-      const list = grouped[t].slice().sort((a,b)=>a._gunSayisi-b._gunSayisi);
-      const safeT = t.replace(/'/g,"\\'");
-      html += `<div style="margin-top:22px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-          <h3 style="font-family:var(--font-display);font-size:15px;margin:0;">${t} <span style="color:var(--muted);font-weight:400;font-size:13px;">(${list.length} üye)</span></h3>
-          <div>
-            <button class="btn secondary" onclick="exportPasifTumu('${safeT}')">Excel İndir</button>
-            <button class="btn secondary" onclick="exportKombine('${safeT}')">Kombine İndir (VIP+Pasif)</button>
-          </div>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>Login</th><th>Telefon</th><th>Toplam yatırım</th><th>Son yatırım tarihi</th><th>Eşik</th></tr></thead><tbody>
-          ${list.map(r=>`<tr onclick="openMemberModal('${r.login}')" style="cursor:pointer;">
-            <td>${r.login}</td><td>${r.telefon||''}</td><td>${fmtMoney(r.toplam_yatirim)}</td>
-            <td>${r._sonYatirim||'–'}</td><td>${r._gunSayisi}. Gün</td>
-          </tr>`).join('')}
-        </tbody></table></div>
-      </div>`;
-    });
-  }
-  content.innerHTML = html;
-  window._pasifTumuRows = rows;
-}
-async function exportPasifTumu(temsilci){
-  const rows = (window._pasifTumuRows || []).filter(r => !temsilci || r.temsilci === temsilci);
-  if(rows.length===0){ alert('Aktarılacak veri yok.'); return; }
-  const viewDate = document.getElementById('viewDate').value;
-  const exportRows = rows.map(r => ({
-    Temsilci: r.temsilci, Login: r.login, Telefon: r.telefon, 'Kayıt Tarihi': r.kayit_tarihi,
-    'Toplam Yatırım': r.toplam_yatirim, 'Son Yatırım Tarihi': r._sonYatirim || '',
-    'Eşik': r._gunSayisi + '. Gün'
-  }));
-  const filename = temsilci ? `pasif_${temsilci}_${viewDate}.xlsx` : `pasif_tumu_${viewDate}.xlsx`;
-  await writeStyledWorkbook([{name:'Pasif Uyeler', color:'FF8F3A30', rows: exportRows}], filename);
-}
 function renderCurrentPage(page){
   if(page==='planlama'){ renderPlanlamaPage(); return; }
   if(page==='raporlar'){ renderRaporlarPage(); return; }
+  if(page==='pasif'){ renderPasifTabs(); renderPasifKontrolContent(); return; }
   if(dateList.length===0) return;
   const viewDate = document.getElementById('viewDate').value;
   if(!viewDate) return;
@@ -1278,47 +1342,6 @@ function renderCurrentPage(page){
     renderYeniVipView(viewDate);
     document.getElementById('cnt-yeni-vip').textContent = getYeniVipCandidates(viewDate).length;
   }
-  if(page==='pasif'){
-    renderPasifTabs();
-    if(pasifAktifGun === 'tumu'){
-      const summaryElTumu = document.getElementById('pasif-summary');
-      if(summaryElTumu) summaryElTumu.innerHTML = '';
-      renderPasifTumuView(viewDate);
-      return;
-    }
-    const rows = getPasifCandidates(viewDate, pasifAktifGun);
-    const summaryEl = document.getElementById('pasif-summary');
-    if(summaryEl){
-      const sonRaporTarihi = dateList[0];
-      if(!sonRaporTarihi || sonRaporTarihi <= viewDate){
-        summaryEl.innerHTML = `<div style="font-size:12px;color:var(--muted);">Bu tarihten sonra yüklenmiş rapor yok — oran hesaplanamıyor.</div>`;
-      } else {
-        const stats = rows.map(r => checkGeriDonus(r.login, viewDate));
-        const yapti = stats.filter(s=>s.yaptiMi).length;
-        const oran = rows.length ? Math.round((yapti/rows.length)*100) : null;
-        summaryEl.innerHTML = `<div class="card terfi" style="max-width:420px;">
-          <div class="label">Devam Yatırım Oranı — son rapora göre (${sonRaporTarihi})</div>
-          <div class="value">${oran===null ? '–' : oran+'%'}</div>
-          <div class="sub">${rows.length} üyeden ${yapti} tanesi o tarihten bu yana yatırım yaptı</div>
-        </div>`;
-      }
-    }
-    renderSegmentPage('pasif', `Pasif Yatırımlı Üyeler — ${pasifAktifGun}. Gün`, `Son yatırımından bu yana tam ${pasifAktifGun} gün geçmiş üyeler (birikmez — sadece bu gün eşiğine denk gelenler; excel'den düşmüş olsalar bile en son bilinen kayıtlarına göre bulunur)`, rows, {
-      targetElId: 'pasif-content',
-      extraCols:[
-        {label:'Kaynak', render:r=>memberSourceLabelHistoric(r.login, viewDate)},
-        {label:'Son yatırım tarihi', render:r=>r._sonYatirim||'–'},
-        {label:'Kaç gündür pasif', render:r=>r._gunSayisi+' gün'},
-        {label:'Takip Durumu', render:r=>{
-          const gd = checkGeriDonus(r.login, viewDate);
-          return gd.yaptiMi ? `<span class="badge yeni">✅ ${gd.tarih} — +${fmtMoney(gd.fark)}</span>` : `<span class="badge pasif">❌ Henüz yatırım yapmadı</span>`;
-        }, exportVal:r=>{
-          const gd = checkGeriDonus(r.login, viewDate);
-          return gd.yaptiMi ? `Evet — ${gd.tarih} (+${gd.fark}₺)` : 'Hayır';
-        }}
-      ]
-    });
-  }
 }
 
 /* ================= GENEL BAKIŞ ================= */
@@ -1340,7 +1363,7 @@ function renderGenel(viewDate){
 
   const tierCount = Object.values(dayData).filter(r=>tierFor(r.toplam_yatirim)).length;
   const terfiCount = Object.values(dayData).filter(r=>isTerfiYaklasan(r.toplam_yatirim)).length;
-  const pasifCount = getPasifCandidates(viewDate).length;
+  const pasifCount = pasifKontrolRows.filter(r => PASIF_GUN_SECENEKLERI.includes(r.gun_sayisi)).length;
 
   document.getElementById('cnt-yatirimsiz').textContent = cur.yatirimsiz.c;
   document.getElementById('cnt-yatirimli').textContent = cur.yatirimli.c;
