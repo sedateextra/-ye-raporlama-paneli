@@ -990,6 +990,11 @@ async function exportRows(containerId){
 }
 
 /* ================= SAYFA RENDER YÖNLENDİRME ================= */
+function toNumEN(v){
+  if(v===undefined||v===null||v==='') return 0;
+  const n = parseFloat(String(v).replace(/,/g,''));
+  return isNaN(n) ? 0 : n;
+}
 function temizPhoneAlani(s){
   const m = String(s||'').match(/^="?(.*?)"?$/);
   return m ? m[1] : String(s||'').trim();
@@ -1033,14 +1038,14 @@ async function handlePasifCsvUpload(){
       spor_son_bahis: parseTRDateTime(r['Spor Son Bahis']),
       ilk_yatirim_tarihi: parseTRDateTime(r['İlk Yatırım Tarihi']),
       son_yatirim_tarihi: sonYat,
-      toplam_yatirim: toNum(r['Toplam Yatırım']),
-      yatirim_adedi: toNum(r['Yatırım Adedi']),
+      toplam_yatirim: toNumEN(r['Toplam Yatırım']),
+      yatirim_adedi: toNumEN(r['Yatırım Adedi']),
       ilk_cekim_tarihi: parseTRDateTime(r['İlk Çekim Tarihi']),
-      ilk_cekim_tutari: toNum(r['İlk Çekim Tutarı']),
+      ilk_cekim_tutari: toNumEN(r['İlk Çekim Tutarı']),
       son_cekim_tarihi: parseTRDateTime(r['Son Çekim Tarihi']),
-      toplam_cekim: toNum(r['Toplam Çekim']),
-      cekim_adedi: toNum(r['Çekim Adedi']),
-      bakiye: toNum(r['Bakiye']),
+      toplam_cekim: toNumEN(r['Toplam Çekim']),
+      cekim_adedi: toNumEN(r['Çekim Adedi']),
+      bakiye: toNumEN(r['Bakiye']),
       _sonYatDate: sonYat
     });
   });
@@ -1628,13 +1633,13 @@ function parseTRDateTime(s){
   const m = str.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?$/);
   if(!m) return null;
   const dd=m[1], mm=m[2], yyyy=m[3], hh=m[4]||'00', mi=m[5]||'00', ss=m[6]||'00';
-  return new Date(parseInt(yyyy), parseInt(mm)-1, parseInt(dd), parseInt(hh), parseInt(mi), parseInt(ss));
+  return new Date(Date.UTC(parseInt(yyyy), parseInt(mm)-1, parseInt(dd), parseInt(hh), parseInt(mi), parseInt(ss)));
 }
 function hesaplaSegment(atanmaZamani, sonYatirimZamani){
   if(!atanmaZamani || !sonYatirimZamani) return 'yatirimsiz';
   const kesim = new Date(atanmaZamani);
-  kesim.setDate(kesim.getDate()+1);
-  kesim.setHours(10,0,0,0);
+  kesim.setUTCDate(kesim.getUTCDate()+1);
+  kesim.setUTCHours(10,0,0,0);
   return sonYatirimZamani < kesim ? 'yatirimli' : 'yatirimsiz';
 }
 
