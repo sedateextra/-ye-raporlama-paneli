@@ -894,7 +894,8 @@ async function writeStyledWorkbook(sheetDefs, filename){
       });
     }
     const headers = Object.keys(data[0]);
-    const dateCols = headers.filter(h => h.includes('Tarih'));
+    const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
+    const dateCols = headers.filter(h => data.some(row => typeof row[h] === 'string' && ISO_DATE_RE.test(row[h])));
     const ws = wb.addWorksheet(name.substring(0,31), {views:[{state:'frozen', ySplit:1}]});
     ws.columns = headers.map(h => ({header:h, key:h, width: Math.max(14, h.length+4)}));
 
