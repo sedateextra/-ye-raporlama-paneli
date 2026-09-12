@@ -187,8 +187,6 @@
       <div class="navitem" data-page="yatirimsiz" onclick="goPage('yatirimsiz')">Yatırımsız Gelen Üyeler <span class="count" id="cnt-yatirimsiz"></span></div>
       <div class="navitem" data-page="yatirimli" onclick="goPage('yatirimli')">Yatırımlı Gelen Üyeler <span class="count" id="cnt-yatirimli"></span></div>
       <div class="navitem" data-page="vip" onclick="goPage('vip')">VIP Üyeler <span class="count" id="cnt-vip"></span></div>
-      <div class="navitem" data-page="vipyakin-durum" onclick="goPage('vipyakin-durum')">VIP Statüsüne Yaklaşan Üyeler <span class="count" id="cnt-vipyakin-durum"></span></div>
-      <div class="navitem" data-page="terfi" onclick="goPage('terfi')">VIP Terfiye Yaklaşan Üyeler <span class="count" id="cnt-terfi"></span></div>
       <div class="navitem" data-page="yeni-vip" onclick="goPage('yeni-vip')">Yeni VIP Üyeler <span class="count" id="cnt-yeni-vip"></span></div>
       <div class="navitem" data-page="pasif" onclick="goPage('pasif')">Pasif Yatırımlı Üyeler <span class="count" id="cnt-pasif"></span></div>
     </div>
@@ -241,9 +239,19 @@
       <!-- STANDART SEGMENT SAYFALARI -->
       <div class="page" id="page-yatirimsiz"></div>
       <div class="page" id="page-yatirimli"></div>
-      <div class="page" id="page-vip"></div>
-      <div class="page" id="page-vipyakin-durum"></div>
-      <div class="page" id="page-terfi"></div>
+      <div class="page" id="page-vip">
+        <h1 class="page-title">VIP Üyeler</h1>
+        <div class="page-sub">VIP kontrol CSV'sini yükleyin — Toplam Yatırım'a göre otomatik sınıflandırılır</div>
+        <div class="upload-box">
+          <div>
+            <input type="file" id="vipCsvInput" accept=".csv">
+          </div>
+          <button class="btn" onclick="handleVipCsvUpload()">CSV'yi Yükle</button>
+          <span id="vipCsvStatus" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+        <div id="vip-tabs" style="margin-bottom:16px;"></div>
+        <div id="vip-content"></div>
+      </div>
       <div class="page" id="page-yeni-vip"></div>
       <div class="page" id="page-pasif">
         <h1 class="page-title">Pasif Yatırımlı Üyeler</h1>
@@ -473,6 +481,7 @@ function showApp(session){
   renderUploadLog();
   loadHatirlatmalar().then(showTodayReminderPopupIfNeeded);
   loadPasifKontrol();
+  loadVipKontrol();
 }
 async function handleLogin(){
   const email = document.getElementById('loginEmail').value.trim();
@@ -827,9 +836,6 @@ function renderSegmentPage(containerId, title, sub, rows, opts){
 const TOPLU_EXPORT_DEFS = [
   {key:'yatirimsiz', label:'Yatırımsız Gelen Üyeler', sheet:'Yatirimsiz Gelenler', color:'FF5C5A4A', filter:(r,viewDate)=>hasSegment(viewDate, r.login, 'yatirimsiz')},
   {key:'yatirimli', label:'Yatırımlı Gelen Üyeler', sheet:'Yatirimli Gelenler', color:'FF2F5AA8', filter:(r,viewDate)=>hasSegment(viewDate, r.login, 'yatirimli')},
-  {key:'vip', label:'VIP Üyeler', sheet:'VIP Uyeler', color:'FF9C7A1E', filter:(r)=>r.toplam_yatirim >= VIP_ESIK},
-  {key:'vipyakin-durum', label:'VIP Statüsüne Yaklaşan Üyeler', sheet:'VIP Statusune Yaklasan', color:'FF8A6A2F', filter:(r)=>!!tierFor(r.toplam_yatirim)},
-  {key:'terfi', label:'VIP Terfiye Yaklaşan Üyeler', sheet:'VIP Terfiye Yaklasan', color:'FFB5652A', filter:(r)=>isTerfiYaklasan(r.toplam_yatirim)},
 ];
 function buildExportRow(r, viewDate, segKey){
   const base = {
@@ -992,7 +998,7 @@ async function exportRows(containerId){
 
 /* ================= SAYFA RENDER YÖNLENDİRME ================= */
 function toNumEN(v){
-  if(v===undefined||v===null||v==='') return 0;
+  if(v===undefined||v===null||v===''){ return 0; }
   const n = parseFloat(String(v).replace(/,/g,''));
   return isNaN(n) ? 0 : n;
 }
@@ -1163,23 +1169,18 @@ async function exportPasifKontrol(temsilci, gunFilter){
   if(rows.length===0){ alert('Aktarılacak veri yok.'); return; }
   const raporTarihi = rows[0].rapor_tarihi;
   const exportRows = rows.map(r=>({
-    Telefon: r.telefon,
-    Personel: r.temsilci,
-    Ad: r.isim,
-    'Kullanıcı Adı': r.login,
-    'Durum': '',
-    'İlk Yatırım Tarihi': r.ilk_yatirim_tarihi || '',
-    'Son Yatırım Tarihi': r.son_yatirim_tarihi || '',
-    'Yatırım Adedi': r.yatirim_adedi,
-    'Toplam Yatırım': r.toplam_yatirim,
-    'Son Çekim Tarihi': r.son_cekim_tarihi || '',
-    'Toplam Çekim': r.toplam_cekim,
-    'Çekim Adedi': r.cekim_adedi,
-    'Son Giriş': r.son_giris || '',
-    'Son Bahis': r.son_bahis || '',
-    'Casino Son Bahis': r.casino_son_bahis || '',
-    'Spor Son Bahis': r.spor_son_bahis || '',
-    'Bakiye': r.bakiye,
+    Telefon: r.telefon, Personel: r.temsilci, Ad: r.isim, 'Kullanıcı Adı': r.login,
+    'Son Giriş': r.son_giris ? new Date(r.son_giris).toLocaleString('tr-TR') : '',
+    'Son Bahis': r.son_bahis ? new Date(r.son_bahis).toLocaleString('tr-TR') : '',
+    'Casino Son Bahis': r.casino_son_bahis ? new Date(r.casino_son_bahis).toLocaleString('tr-TR') : '',
+    'Spor Son Bahis': r.spor_son_bahis ? new Date(r.spor_son_bahis).toLocaleString('tr-TR') : '',
+    'İlk Yatırım Tarihi': r.ilk_yatirim_tarihi ? new Date(r.ilk_yatirim_tarihi).toLocaleString('tr-TR') : '',
+    'Son Yatırım Tarihi': r.son_yatirim_tarihi ? new Date(r.son_yatirim_tarihi).toLocaleString('tr-TR') : '',
+    'Toplam Yatırım': r.toplam_yatirim, 'Yatırım Adedi': r.yatirim_adedi,
+    'İlk Çekim Tarihi': r.ilk_cekim_tarihi ? new Date(r.ilk_cekim_tarihi).toLocaleString('tr-TR') : '',
+    'İlk Çekim Tutarı': r.ilk_cekim_tutari,
+    'Son Çekim Tarihi': r.son_cekim_tarihi ? new Date(r.son_cekim_tarihi).toLocaleString('tr-TR') : '',
+    'Toplam Çekim': r.toplam_cekim, 'Çekim Adedi': r.cekim_adedi, 'Bakiye': r.bakiye,
     'Kaç Gündür Pasif': r.gun_sayisi + ' gün'
   }));
   const dosyaAdi = temsilci ? `pasif_${temsilci}_${raporTarihi}.xlsx` : `pasif_tumu_${raporTarihi}.xlsx`;
@@ -1199,6 +1200,183 @@ function renderPasifTabs(){
   const tumuActive = pasifAktifGun === 'tumu';
   html += `<button class="btn ${tumuActive?'':'secondary'}" onclick="setPasifGun('tumu')">Tümü</button>`;
   wrap.innerHTML = html;
+}
+let vipKontrolRows = [];
+let vipAktifTab = 'vip'; // 'vip' | 'yaklasan' | 'terfi' | 'tumu'
+async function loadVipKontrol(){
+  if(!sb) return;
+  const {data, error} = await sb.from('vip_kontrol').select('*').order('rapor_tarihi', {ascending:false}).limit(5000);
+  if(error || !data || data.length===0){ vipKontrolRows = []; return; }
+  const enSonTarih = data[0].rapor_tarihi;
+  vipKontrolRows = data.filter(r=>r.rapor_tarihi === enSonTarih);
+}
+async function handleVipCsvUpload(){
+  if(!sb){ document.getElementById('vipCsvStatus').textContent = 'Önce Ayarlar sayfasından Supabase bağlantısı kurun.'; return; }
+  const fileInput = document.getElementById('vipCsvInput');
+  const file = fileInput.files[0];
+  const status = document.getElementById('vipCsvStatus');
+  if(!file){ status.textContent = 'Önce bir CSV dosyası seçin.'; return; }
+  if(typeof Papa === 'undefined'){ status.textContent = 'CSV kütüphanesi yüklenemedi.'; return; }
+
+  status.textContent = 'Okunuyor...';
+  const text = await file.text();
+  const parsed = Papa.parse(text, {header:true, skipEmptyLines:true});
+  const rawRows = parsed.data;
+
+  let raporTarihi = null;
+  const dbRows = [];
+  rawRows.forEach(r => {
+    const login = String(r['Kullanıcı Adı']||'').trim();
+    if(!login) return;
+    const rt = String(r['Rapor Tarihi']||'').trim();
+    if(rt) raporTarihi = rt;
+    dbRows.push({
+      login,
+      temsilci: String(r['Personel']||'').trim(),
+      isim: String(r['Ad']||'').trim(),
+      telefon: temizPhoneAlani(r['Telefon']),
+      son_giris: parseTRDateTime(r['Son Giriş']),
+      son_bahis: parseTRDateTime(r['Son Bahis']),
+      casino_son_bahis: parseTRDateTime(r['Casino Son Bahis']),
+      spor_son_bahis: parseTRDateTime(r['Spor Son Bahis']),
+      ilk_yatirim_tarihi: parseTRDateTime(r['İlk Yatırım Tarihi']),
+      son_yatirim_tarihi: parseTRDateTime(r['Son Yatırım Tarihi']),
+      toplam_yatirim: toNumEN(r['Toplam Yatırım']),
+      yatirim_adedi: toNumEN(r['Yatırım Adedi']),
+      ilk_cekim_tarihi: parseTRDateTime(r['İlk Çekim Tarihi']),
+      ilk_cekim_tutari: toNumEN(r['İlk Çekim Tutarı']),
+      son_cekim_tarihi: parseTRDateTime(r['Son Çekim Tarihi']),
+      toplam_cekim: toNumEN(r['Toplam Çekim']),
+      cekim_adedi: toNumEN(r['Çekim Adedi']),
+      bakiye: toNumEN(r['Bakiye'])
+    });
+  });
+
+  if(!raporTarihi){ status.textContent = 'Rapor Tarihi bulunamadı.'; return; }
+
+  const finalRows = dbRows.map(k => ({
+    ...k,
+    rapor_tarihi: raporTarihi,
+    son_giris: k.son_giris ? k.son_giris.toISOString() : null,
+    son_bahis: k.son_bahis ? k.son_bahis.toISOString() : null,
+    casino_son_bahis: k.casino_son_bahis ? k.casino_son_bahis.toISOString() : null,
+    spor_son_bahis: k.spor_son_bahis ? k.spor_son_bahis.toISOString() : null,
+    ilk_yatirim_tarihi: k.ilk_yatirim_tarihi ? k.ilk_yatirim_tarihi.toISOString() : null,
+    son_yatirim_tarihi: k.son_yatirim_tarihi ? k.son_yatirim_tarihi.toISOString() : null,
+    ilk_cekim_tarihi: k.ilk_cekim_tarihi ? k.ilk_cekim_tarihi.toISOString() : null,
+    son_cekim_tarihi: k.son_cekim_tarihi ? k.son_cekim_tarihi.toISOString() : null
+  }));
+
+  status.textContent = `Yükleniyor... 0/${finalRows.length}`;
+  const chunkSize = 500;
+  for(let i=0;i<finalRows.length;i+=chunkSize){
+    const chunk = finalRows.slice(i, i+chunkSize);
+    const {error} = await sb.from('vip_kontrol').upsert(chunk, {onConflict:'rapor_tarihi,login'});
+    if(error){ status.textContent = 'Hata: ' + error.message; return; }
+    status.textContent = `Yükleniyor... ${Math.min(i+chunkSize,finalRows.length)}/${finalRows.length}`;
+  }
+  status.textContent = `${finalRows.length} kayıt yüklendi (${raporTarihi}).`;
+  fileInput.value = '';
+  await loadVipKontrol();
+
+  const vipSayisi = vipKontrolRows.filter(r=>r.toplam_yatirim >= VIP_ESIK).length;
+  const yaklasanSayisi = vipKontrolRows.filter(r=>tierFor(r.toplam_yatirim)).length;
+  const terfiSayisi = vipKontrolRows.filter(r=>isTerfiYaklasan(r.toplam_yatirim)).length;
+  showToast('🏆 VIP Kontrol Güncellendi', `VIP: ${vipSayisi} · Statüsüne Yaklaşan: ${yaklasanSayisi} · Terfiye Yaklaşan: ${terfiSayisi}`, 'vip', 'vip');
+
+  renderCurrentPage('vip');
+}
+function setVipTab(t){
+  vipAktifTab = t;
+  renderCurrentPage('vip');
+}
+function renderVipTabs(){
+  const wrap = document.getElementById('vip-tabs');
+  if(!wrap) return;
+  const secenekler = [['vip','VIP Üyeler'],['yaklasan','Statüsüne Yaklaşan'],['terfi','Terfiye Yaklaşan'],['tumu','Tümü']];
+  wrap.innerHTML = secenekler.map(([k,l])=>{
+    const active = k === vipAktifTab;
+    return `<button class="btn ${active?'':'secondary'}" style="margin-right:8px;" onclick="setVipTab('${k}')">${l}</button>`;
+  }).join('');
+}
+function vipTabRows(tab){
+  if(tab==='vip') return vipKontrolRows.filter(r=>r.toplam_yatirim >= VIP_ESIK);
+  if(tab==='yaklasan') return vipKontrolRows.filter(r=>tierFor(r.toplam_yatirim));
+  if(tab==='terfi') return vipKontrolRows.filter(r=>isTerfiYaklasan(r.toplam_yatirim));
+  return vipKontrolRows.filter(r=>r.toplam_yatirim >= VIP_ESIK || tierFor(r.toplam_yatirim) || isTerfiYaklasan(r.toplam_yatirim));
+}
+function renderVipKontrolContent(){
+  const content = document.getElementById('vip-content');
+  if(!content) return;
+  if(vipKontrolRows.length===0){
+    content.innerHTML = '<div class="empty">Henüz VIP kontrol CSV\'si yüklenmedi.</div>';
+    return;
+  }
+  const raporTarihi = vipKontrolRows[0].rapor_tarihi;
+  const rows = vipTabRows(vipAktifTab);
+  const grouped = {};
+  rows.forEach(r=>{
+    const k = r.temsilci || '(atanmamış)';
+    if(!grouped[k]) grouped[k] = [];
+    grouped[k].push(r);
+  });
+  const temsilciler = Object.keys(grouped).sort((a,b)=>a.localeCompare(b,'tr'));
+  const baslik = {vip:'VIP Üyeler', yaklasan:'VIP Statüsüne Yaklaşan Üyeler', terfi:'VIP Terfiye Yaklaşan Üyeler', tumu:'VIP Üyeler — Tümü'}[vipAktifTab];
+
+  let html = `<h1 class="page-title">${baslik}</h1><div class="page-sub">Rapor Tarihi: ${raporTarihi} · ${rows.length} üye</div>`;
+  html += `<div class="toolbar" style="justify-content:flex-end;"><button class="btn" onclick="exportVipKontrol(null)">Hepsini İndir</button></div>`;
+
+  if(temsilciler.length===0){
+    html += '<div class="empty">Bu kritere uyan üye yok.</div>';
+  } else {
+    temsilciler.forEach(t=>{
+      const list = grouped[t].slice().sort((a,b)=>b.toplam_yatirim-a.toplam_yatirim);
+      const safeT = t.replace(/'/g,"\\'");
+      html += `<div style="margin-top:22px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <h3 style="font-family:var(--font-display);font-size:15px;margin:0;">${t} <span style="color:var(--muted);font-weight:400;font-size:13px;">(${list.length} üye)</span></h3>
+          <button class="btn secondary" onclick="exportVipKontrol('${safeT}')">Excel İndir</button>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Login</th><th>Ad</th><th>Telefon</th><th>Toplam Yatırım</th><th>Son Yatırım</th><th>Bakiye</th></tr></thead><tbody>
+          ${list.map(r=>`<tr>
+            <td>${r.login}</td><td>${r.isim||''}</td><td>${r.telefon||''}</td>
+            <td>${fmtMoney(r.toplam_yatirim)}</td>
+            <td>${r.son_yatirim_tarihi ? new Date(r.son_yatirim_tarihi).toLocaleString('tr-TR') : ''}</td>
+            <td>${fmtMoney(r.bakiye)}</td>
+          </tr>`).join('')}
+        </tbody></table></div>
+      </div>`;
+    });
+  }
+  content.innerHTML = html;
+}
+async function exportVipKontrol(temsilci){
+  let rows = vipTabRows(vipAktifTab);
+  if(temsilci) rows = rows.filter(r=>r.temsilci===temsilci);
+  if(rows.length===0){ alert('Aktarılacak veri yok.'); return; }
+  const raporTarihi = rows[0].rapor_tarihi;
+  const exportRows = rows.map(r=>({
+    Telefon: r.telefon,
+    Personel: r.temsilci,
+    Ad: r.isim,
+    'Kullanıcı Adı': r.login,
+    'Durum': '',
+    'İlk Yatırım Tarihi': r.ilk_yatirim_tarihi || '',
+    'Son Yatırım Tarihi': r.son_yatirim_tarihi || '',
+    'Yatırım Adedi': r.yatirim_adedi,
+    'Toplam Yatırım': r.toplam_yatirim,
+    'Son Çekim Tarihi': r.son_cekim_tarihi || '',
+    'Toplam Çekim': r.toplam_cekim,
+    'Çekim Adedi': r.cekim_adedi,
+    'Son Giriş': r.son_giris || '',
+    'Son Bahis': r.son_bahis || '',
+    'Casino Son Bahis': r.casino_son_bahis || '',
+    'Spor Son Bahis': r.spor_son_bahis || '',
+    'Bakiye': r.bakiye,
+    'Kaç Gündür Pasif': ''
+  }));
+  const dosyaAdi = temsilci ? `vip_${vipAktifTab}_${temsilci}_${raporTarihi}.xlsx` : `vip_${vipAktifTab}_tumu_${raporTarihi}.xlsx`;
+  await writeStyledWorkbook([{name:'VIP Kontrol', color:'FF9C7A1E', rows: exportRows}], dosyaAdi);
 }
 function getYeniVipCandidates(viewDate){
   const idx = dateList.indexOf(viewDate);
@@ -1225,7 +1403,7 @@ async function exportKombine(temsilci){
     Temsilci: r.temsilci, Login: r.login, Telefon: r.telefon, Ad: r.isim,
     'Toplam Yatırım': r.toplam_yatirim, 'Yatırım Adedi': r.yatirim_adedi,
     'Toplam Çekim': r.toplam_cekim, 'Çekim Adedi': r.cekim_adedi, Bakiye: r.bakiye,
-    'Son Yatırım Tarihi': r.son_yatirim_tarihi || '',
+    'Son Yatırım Tarihi': r.son_yatirim_tarihi ? new Date(r.son_yatirim_tarihi).toLocaleString('tr-TR') : '',
     'Kaç Gündür Pasif': r.gun_sayisi + ' gün',
     'Rapor Tarihi': r.rapor_tarihi
   }));
@@ -1302,6 +1480,7 @@ function renderCurrentPage(page){
   if(page==='planlama'){ renderPlanlamaPage(); return; }
   if(page==='raporlar'){ renderRaporlarPage(); return; }
   if(page==='pasif'){ renderPasifTabs(); renderPasifKontrolContent(); return; }
+  if(page==='vip'){ renderVipTabs(); renderVipKontrolContent(); return; }
   if(dateList.length===0) return;
   const viewDate = document.getElementById('viewDate').value;
   if(!viewDate) return;
@@ -1316,38 +1495,6 @@ function renderCurrentPage(page){
   if(page==='yatirimli'){
     const rows = baseRowsForDate(viewDate, r=>hasSegment(viewDate, r.login, 'yatirimli'));
     renderSegmentPage('yatirimli', 'Yatırımlı Gelen Üyeler', 'Yatırım yapmış üyeler', rows);
-  }
-  if(page==='vip'){
-    const rows = baseRowsForDate(viewDate, r=>r.toplam_yatirim >= VIP_ESIK);
-    renderSegmentPage('vip', 'VIP Üyeler', 'Toplam yatırımı 10.000₺ ve üzerinde olan tüm üyeler (hangi sekmeden geldiğinden bağımsız)', rows, {
-      extraCols:[
-        {label:'Kaynak', render:r=>memberSourceLabel(viewDate, r.login)},
-        {label:'VIP Kontrol', render:r=>r.vip_kontrol||''},
-        {label:'Hediye Hakkı', render:r=>r.hediye_hakki||''}
-      ]
-    });
-  }
-  if(page==='vipyakin-durum'){
-    const rows = baseRowsForDate(viewDate, r=>tierFor(r.toplam_yatirim));
-    renderSegmentPage('vipyakin-durum', 'VIP Statüsüne Yaklaşan Üyeler', 'Bronz/Gümüş/Altın/Platin/Elmas eşiğine 3.500₺ ve altı kalanlar', rows, {
-      extraCols:[
-        {label:'Kaynak', render:r=>memberSourceLabel(viewDate, r.login)},
-        {label:'Yaklaşılan statü', render:r=>{const t=tierFor(r.toplam_yatirim); return `<span class="badge ${t.slug}">${t.name}</span>`;}, exportVal:r=>tierFor(r.toplam_yatirim).name},
-        {label:'Hedefe ilerleme', render:r=>progressBarHtml(r.toplam_yatirim, tierFor(r.toplam_yatirim)), exportVal:r=>{const t=tierFor(r.toplam_yatirim); return Math.round((r.toplam_yatirim/t.hedef)*100)+'%';}},
-        {label:'Hedef tutar', render:r=>fmtMoney(tierFor(r.toplam_yatirim).hedef), exportVal:r=>tierFor(r.toplam_yatirim).hedef},
-        {label:'Kalan tutar', render:r=>fmtMoney(tierFor(r.toplam_yatirim).hedef - r.toplam_yatirim), exportVal:r=>tierFor(r.toplam_yatirim).hedef - r.toplam_yatirim}
-      ]
-    });
-  }
-  if(page==='terfi'){
-    const rows = baseRowsForDate(viewDate, r=>isTerfiYaklasan(r.toplam_yatirim));
-    renderSegmentPage('terfi', 'VIP Terfiye Yaklaşan Üyeler', '7.000₺–9.999₺ arası toplam yatırımı olan üyeler (VIP eşiği 10.000₺)', rows, {
-      extraCols:[
-        {label:'Kaynak', render:r=>memberSourceLabel(viewDate, r.login)},
-        {label:'Hedefe ilerleme', render:r=>progressBarHtml(r.toplam_yatirim, TERFI_RANGE), exportVal:r=>Math.round((r.toplam_yatirim/TERFI_RANGE.hedef)*100)+'%'},
-        {label:'Kalan tutar', render:r=>fmtMoney(TERFI_RANGE.hedef - r.toplam_yatirim), exportVal:r=>TERFI_RANGE.hedef - r.toplam_yatirim}
-      ]
-    });
   }
   if(page==='yeni-vip'){
     renderYeniVipView(viewDate);
@@ -1372,15 +1519,15 @@ function renderGenel(viewDate){
   const cur = segCounts(dayData, viewDate);
   const prev = cmpData ? segCounts(cmpData, compareDate) : null;
 
-  const tierCount = Object.values(dayData).filter(r=>tierFor(r.toplam_yatirim)).length;
-  const terfiCount = Object.values(dayData).filter(r=>isTerfiYaklasan(r.toplam_yatirim)).length;
+  const tierCount = vipKontrolRows.filter(r=>tierFor(r.toplam_yatirim)).length;
+  const terfiCount = vipKontrolRows.filter(r=>isTerfiYaklasan(r.toplam_yatirim)).length;
+  const vipCount = vipKontrolRows.filter(r=>r.toplam_yatirim >= VIP_ESIK).length;
+  const vipTutar = vipKontrolRows.filter(r=>r.toplam_yatirim >= VIP_ESIK).reduce((s,r)=>s+(r.toplam_yatirim||0),0);
   const pasifCount = pasifKontrolRows.filter(r => PASIF_GUN_SECENEKLERI.includes(r.gun_sayisi)).length;
 
   document.getElementById('cnt-yatirimsiz').textContent = cur.yatirimsiz.c;
   document.getElementById('cnt-yatirimli').textContent = cur.yatirimli.c;
-  document.getElementById('cnt-vip').textContent = cur.vip.c;
-  document.getElementById('cnt-vipyakin-durum').textContent = tierCount;
-  document.getElementById('cnt-terfi').textContent = terfiCount;
+  document.getElementById('cnt-vip').textContent = vipCount;
   document.getElementById('cnt-pasif').textContent = pasifCount;
 
   const cardsWrap = document.getElementById('genelCards');
@@ -1398,9 +1545,9 @@ function renderGenel(viewDate){
   cardsWrap.innerHTML =
     cardHtml('yatirimsiz','Yatırımsız', cur.yatirimsiz.c, cur.yatirimsiz.t, prev?prev.yatirimsiz.c:0, prev?prev.yatirimsiz.t:0, 'yatirimsiz') +
     cardHtml('yatirimli','Yatırımlı', cur.yatirimli.c, cur.yatirimli.t, prev?prev.yatirimli.c:0, prev?prev.yatirimli.t:0, 'yatirimli') +
-    cardHtml('vip','VIP', cur.vip.c, cur.vip.t, prev?prev.vip.c:0, prev?prev.vip.t:0, 'vip') +
-    `<div class="card vipyakin" onclick="goPage('vipyakin-durum')"><div class="label">VIP statüsüne yaklaşan</div><div class="value">${fmtInt(tierCount)} üye</div><div class="sub">Bronz→Elmas eşiklerine yakın</div></div>` +
-    `<div class="card terfi" onclick="goPage('terfi')"><div class="label">VIP terfiye yaklaşan</div><div class="value">${fmtInt(terfiCount)} üye</div><div class="sub">7.000₺–9.999₺ arası</div></div>` +
+    `<div class="card vip" onclick="goPage('vip')"><div class="label">VIP</div><div class="value">${fmtInt(vipCount)} üye</div><div class="sub">${fmtMoney(vipTutar)} toplam yatırım</div></div>` +
+    `<div class="card vipyakin" onclick="goPage('vip')"><div class="label">VIP statüsüne yaklaşan</div><div class="value">${fmtInt(tierCount)} üye</div><div class="sub">Bronz→Elmas eşiklerine yakın</div></div>` +
+    `<div class="card terfi" onclick="goPage('vip')"><div class="label">VIP terfiye yaklaşan</div><div class="value">${fmtInt(terfiCount)} üye</div><div class="sub">7.000₺–9.999₺ arası</div></div>` +
     `<div class="card pasif" onclick="goPage('pasif')"><div class="label">Pasif yatırımlı</div><div class="value">${fmtInt(pasifCount)} üye</div><div class="sub">5 / 12 / 21 / 28. gün eşiklerinde</div></div>` +
     ``;
 
