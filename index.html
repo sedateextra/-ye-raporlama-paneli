@@ -1324,7 +1324,10 @@ function renderVipKontrolContent(){
   const baslik = {vip:'VIP Üyeler', yaklasan:'VIP Statüsüne Yaklaşan Üyeler', terfi:'VIP Terfiye Yaklaşan Üyeler', tumu:'VIP Üyeler — Tümü'}[vipAktifTab];
 
   let html = `<h1 class="page-title">${baslik}</h1><div class="page-sub">Rapor Tarihi: ${raporTarihi} · ${rows.length} üye</div>`;
-  html += `<div class="toolbar" style="justify-content:flex-end;"><button class="btn" onclick="exportVipKontrol(null)">Hepsini İndir</button></div>`;
+  html += `<div class="toolbar" style="justify-content:flex-end;">
+    <button class="btn secondary" onclick="exportVipKontrol(null)">Hepsini İndir</button>
+    <button class="btn" onclick="exportVipPasifKombine(null)">Tümü Kombine İndir (VIP+Pasif)</button>
+  </div>`;
 
   if(temsilciler.length===0){
     html += '<div class="empty">Bu kritere uyan üye yok.</div>';
@@ -1335,7 +1338,10 @@ function renderVipKontrolContent(){
       html += `<div style="margin-top:22px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
           <h3 style="font-family:var(--font-display);font-size:15px;margin:0;">${t} <span style="color:var(--muted);font-weight:400;font-size:13px;">(${list.length} üye)</span></h3>
-          <button class="btn secondary" onclick="exportVipKontrol('${safeT}')">Excel İndir</button>
+          <div>
+            <button class="btn secondary" onclick="exportVipKontrol('${safeT}')">Excel İndir</button>
+            <button class="btn secondary" onclick="exportVipPasifKombine('${safeT}')">Kombine İndir (VIP+Pasif)</button>
+          </div>
         </div>
         <div class="table-wrap"><table><thead><tr><th>Login</th><th>Ad</th><th>Telefon</th><th>Toplam Yatırım</th><th>Son Yatırım</th><th>Bakiye</th></tr></thead><tbody>
           ${list.map(r=>`<tr>
@@ -1349,6 +1355,29 @@ function renderVipKontrolContent(){
     });
   }
   content.innerHTML = html;
+}
+async function exportVipPasifKombine(temsilci){
+  let vipRows = vipTabRows(vipAktifTab);
+  let pasifRows = pasifKontrolRows.filter(r => PASIF_GUN_SECENEKLERI.includes(r.gun_sayisi));
+  if(temsilci){ vipRows = vipRows.filter(r=>r.temsilci===temsilci); pasifRows = pasifRows.filter(r=>r.temsilci===temsilci); }
+  if(vipRows.length===0 && pasifRows.length===0){ alert('Aktarılacak veri yok.'); return; }
+  const ortakAlanlar = r => ({
+    Telefon: r.telefon, Personel: r.temsilci, Ad: r.isim, 'Kullanıcı Adı': r.login,
+    'İlk Yatırım Tarihi': r.ilk_yatirim_tarihi || '', 'Son Yatırım Tarihi': r.son_yatirim_tarihi || '',
+    'Yatırım Adedi': r.yatirim_adedi, 'Toplam Yatırım': r.toplam_yatirim,
+    'Son Çekim Tarihi': r.son_cekim_tarihi || '', 'Toplam Çekim': r.toplam_cekim, 'Çekim Adedi': r.cekim_adedi,
+    'Son Giriş': r.son_giris || '', 'Son Bahis': r.son_bahis || '',
+    'Casino Son Bahis': r.casino_son_bahis || '', 'Spor Son Bahis': r.spor_son_bahis || '',
+    'Bakiye': r.bakiye
+  });
+  const vipExportRows = vipRows.map(ortakAlanlar);
+  const pasifExportRows = pasifRows.map(r => ({...ortakAlanlar(r), 'Kaç Gündür Pasif': r.gun_sayisi + ' gün'}));
+  const raporTarihi = (vipRows[0] || pasifRows[0] || {}).rapor_tarihi || '';
+  const dosyaAdi = temsilci ? `vip_pasif_kombine_${temsilci}_${raporTarihi}.xlsx` : `vip_pasif_kombine_tumu_${raporTarihi}.xlsx`;
+  await writeStyledWorkbook([
+    {name:'VIP Kontrol', color:'FF9C7A1E', rows: vipExportRows},
+    {name:'Pasif Kontrol', color:'FF8F3A30', rows: pasifExportRows}
+  ], dosyaAdi);
 }
 async function exportVipKontrol(temsilci){
   let rows = vipTabRows(vipAktifTab);
